@@ -1,0 +1,11 @@
+services:
+  hookwatch:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - hookwatch-data:/data
+    restart: unless-stopped
+
+volumes:
+  hookwatch-data:
