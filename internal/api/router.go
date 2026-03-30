@@ -1,8 +1,12 @@
 package api
 
 import (
+	"io/fs"
 	"net/http"
+	"path"
+	"strings"
 
+	"github.com/chrishaylesai/hookwatch"
 	"github.com/chrishaylesai/hookwatch/internal/hub"
 	"github.com/chrishaylesai/hookwatch/internal/store"
 	"github.com/go-chi/chi/v5"
@@ -25,9 +29,40 @@ func NewRouter(db *store.Store, eventHub *hub.Hub) http.Handler {
 		})
 	})
 
+	staticFS, err := hookwatch.FrontendFS()
+	if err != nil {
+		panic(err)
+	}
+
 	// Webhook capture - catch-all at root
 	// r.HandleFunc("/{tokenId}", captureHandler)
 	// r.HandleFunc("/{tokenId}/*", captureHandler)
+	r.Handle("/*", spaHandler(staticFS))
 
 	return r
+}
+
+func spaHandler(staticFS fs.FS) http.Handler {
+	fileServer := http.FileServerFS(staticFS)
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cleanPath := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		if cleanPath == "" {
+			cleanPath = "index.html"
+		}
+
+		if _, err := fs.Stat(staticFS, cleanPath); err == nil {
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+
+		index, err := fs.ReadFile(staticFS, "index.html")
+		if err != nil {
+			http.Error(w, "frontend build missing index.html", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(index)
+	})
 }

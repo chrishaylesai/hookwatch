@@ -1,1 +1,4 @@
 hookwatch
+hookwatch_bin
+.gocache
+/tmp_data
