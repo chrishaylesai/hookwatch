@@ -2,14 +2,56 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/chrishaylesai/hookwatch/internal/models"
 	"zombiezen.com/go/sqlite"
 	"zombiezen.com/go/sqlite/sqlitex"
 )
+
+const (
+	defaultPageSize = 50
+	maxPageSize     = 100
+	timestampLayout = time.RFC3339
+)
+
+var ErrNotFound = errors.New("store: not found")
+
+// TokenListParams controls token pagination and ordering.
+type TokenListParams struct {
+	Limit  int
+	Offset int
+	SortBy string
+	Order  string
+}
+
+// TokenPage is a paginated token result set.
+type TokenPage struct {
+	Tokens []*models.Token
+	Total  int
+	Limit  int
+	Offset int
+}
+
+// RequestListParams controls request pagination and ordering.
+type RequestListParams struct {
+	Limit  int
+	Offset int
+	SortBy string
+	Order  string
+}
+
+// RequestPage is a paginated request result set.
+type RequestPage struct {
+	Requests []*models.Request
+	Total    int
+	Limit    int
+	Offset   int
+}
 
 // Store wraps a SQLite connection pool.
 type Store struct {
@@ -20,7 +62,8 @@ type Store struct {
 func Open(dataDir string) (*Store, error) {
 	dbPath := filepath.Join(dataDir, "hookwatch.db")
 	pool, err := sqlitex.NewPool(dbPath, sqlitex.PoolOptions{
-		PoolSize: 10,
+		PoolSize:    10,
+		PrepareConn: prepareConn,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
@@ -35,15 +78,27 @@ func Open(dataDir string) (*Store, error) {
 	return s, nil
 }
 
+func prepareConn(conn *sqlite.Conn) error {
+	return sqlitex.ExecuteTransient(conn, `PRAGMA foreign_keys = ON;`, nil)
+}
+
 // Close closes the database pool.
 func (s *Store) Close() error {
 	return s.pool.Close()
 }
 
+func (s *Store) take(ctx context.Context) (*sqlite.Conn, error) {
+	conn, err := s.pool.Take(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get sqlite connection: %w", err)
+	}
+	return conn, nil
+}
+
 func (s *Store) migrate() error {
-	conn := s.pool.Get(context.Background())
-	if conn == nil {
-		return fmt.Errorf("failed to get connection for migration")
+	conn, err := s.take(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to get connection for migration: %w", err)
 	}
 	defer s.pool.Put(conn)
 
@@ -100,8 +155,7 @@ func (s *Store) migrate() error {
 			url TEXT NOT NULL,
 			created_at DATETIME NOT NULL
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_requests_token ON requests(token_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_requests_created ON requests(created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_requests_token_created ON requests(token_id, created_at DESC)`,
 		`CREATE TABLE IF NOT EXISTS hook_grants (
 			id TEXT PRIMARY KEY,
 			token_id TEXT NOT NULL REFERENCES tokens(uuid) ON DELETE CASCADE,
@@ -126,9 +180,9 @@ func (s *Store) migrate() error {
 
 // CreateToken inserts a new token into the database.
 func (s *Store) CreateToken(ctx context.Context, token *models.Token) error {
-	conn := s.pool.Get(ctx)
-	if conn == nil {
-		return fmt.Errorf("failed to get connection")
+	conn, err := s.take(ctx)
+	if err != nil {
+		return err
 	}
 	defer s.pool.Put(conn)
 
@@ -138,12 +192,12 @@ func (s *Store) CreateToken(ctx context.Context, token *models.Token) error {
 		created_at, updated_at
 	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
-	err := sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
+	err = sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
 		Args: []any{
-			token.UUID, token.OwnerID, token.ReceiveMode, token.ViewMode,
-			token.ReceiveSecretHash, token.ReceiveSecretPrefix,
+			token.UUID, nullableString(token.OwnerID), token.ReceiveMode, token.ViewMode,
+			nullableString(token.ReceiveSecretHash), nullableString(token.ReceiveSecretPrefix),
 			token.DefaultStatus, token.DefaultContent, token.DefaultContentType,
-			token.Timeout, token.CORS, token.CreatedAt.Format(time.RFC3339), token.UpdatedAt.Format(time.RFC3339),
+			token.Timeout, boolToSQLite(token.CORS), formatTime(token.CreatedAt), formatTime(token.UpdatedAt),
 		},
 	})
 	if err != nil {
@@ -155,87 +209,130 @@ func (s *Store) CreateToken(ctx context.Context, token *models.Token) error {
 
 // GetToken retrieves a token by its UUID.
 func (s *Store) GetToken(ctx context.Context, uuid string) (*models.Token, error) {
-	conn := s.pool.Get(ctx)
-	if conn == nil {
-		return nil, fmt.Errorf("failed to get connection")
+	conn, err := s.take(ctx)
+	if err != nil {
+		return nil, err
 	}
 	defer s.pool.Put(conn)
 
-	query := `SELECT 
+	query := `SELECT
 		uuid, owner_id, receive_mode, view_mode, receive_secret_hash, receive_secret_prefix,
 		default_status, default_content, default_content_type, timeout, cors,
 		created_at, updated_at
 	FROM tokens WHERE uuid = ?`
 
-	var token models.Token
-	var createdAt, updatedAt string
-	var found bool
-	err := sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
+	var token *models.Token
+	err = sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
 		Args: []any{uuid},
 		ResultFunc: func(stmt *sqlite.Stmt) error {
-			found = true
-			token.UUID = stmt.ColumnText(0)
-			if !stmt.ColumnIsNull(1) {
-				ownerID := stmt.ColumnText(1)
-				token.OwnerID = &ownerID
-			}
-			token.ReceiveMode = stmt.ColumnText(2)
-			token.ViewMode = stmt.ColumnText(3)
-			if !stmt.ColumnIsNull(4) {
-				hash := stmt.ColumnText(4)
-				token.ReceiveSecretHash = &hash
-			}
-			if !stmt.ColumnIsNull(5) {
-				prefix := stmt.ColumnText(5)
-				token.ReceiveSecretPrefix = &prefix
-			}
-			token.DefaultStatus = stmt.ColumnInt(6)
-			token.DefaultContent = stmt.ColumnText(7)
-			token.DefaultContentType = stmt.ColumnText(8)
-			token.Timeout = stmt.ColumnInt(9)
-			token.CORS = stmt.ColumnInt(10) != 0
-			createdAt = stmt.ColumnText(11)
-			updatedAt = stmt.ColumnText(12)
-			return nil
+			var scanErr error
+			token, scanErr = scanToken(stmt)
+			return scanErr
 		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("get token: %w", err)
 	}
-
-	if !found {
-		return nil, nil // Not found
+	if token == nil {
+		return nil, ErrNotFound
 	}
 
-	token.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
-	token.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+	return token, nil
+}
 
-	return &token, nil
+// ListTokens retrieves a paginated list of tokens.
+func (s *Store) ListTokens(ctx context.Context, params TokenListParams) (*TokenPage, error) {
+	conn, err := s.take(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer s.pool.Put(conn)
+
+	params = normalizeTokenListParams(params)
+	total, err := queryCount(conn, "SELECT COUNT(*) FROM tokens", nil)
+	if err != nil {
+		return nil, fmt.Errorf("count tokens: %w", err)
+	}
+
+	query := fmt.Sprintf(`SELECT
+		uuid, owner_id, receive_mode, view_mode, receive_secret_hash, receive_secret_prefix,
+		default_status, default_content, default_content_type, timeout, cors,
+		created_at, updated_at
+	FROM tokens
+	ORDER BY %s %s
+	LIMIT ? OFFSET ?`, tokenSortColumn(params.SortBy), sortDirection(params.Order))
+
+	var tokens []*models.Token
+	err = sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
+		Args: []any{params.Limit, params.Offset},
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			token, scanErr := scanToken(stmt)
+			if scanErr != nil {
+				return scanErr
+			}
+			tokens = append(tokens, token)
+			return nil
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list tokens: %w", err)
+	}
+
+	return &TokenPage{
+		Tokens: tokens,
+		Total:  total,
+		Limit:  params.Limit,
+		Offset: params.Offset,
+	}, nil
 }
 
 // UpdateToken updates an existing token.
 func (s *Store) UpdateToken(ctx context.Context, token *models.Token) error {
-	conn := s.pool.Get(ctx)
-	if conn == nil {
-		return fmt.Errorf("failed to get connection")
+	conn, err := s.take(ctx)
+	if err != nil {
+		return err
 	}
 	defer s.pool.Put(conn)
 
-	query := `UPDATE tokens SET 
+	query := `UPDATE tokens SET
 		receive_mode = ?, view_mode = ?, receive_secret_hash = ?, receive_secret_prefix = ?,
 		default_status = ?, default_content = ?, default_content_type = ?, timeout = ?, cors = ?,
 		updated_at = ?
 	WHERE uuid = ?`
 
-	err := sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
+	err = sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
 		Args: []any{
-			token.ReceiveMode, token.ViewMode, token.ReceiveSecretHash, token.ReceiveSecretPrefix,
+			token.ReceiveMode, token.ViewMode, nullableString(token.ReceiveSecretHash), nullableString(token.ReceiveSecretPrefix),
 			token.DefaultStatus, token.DefaultContent, token.DefaultContentType,
-			token.Timeout, token.CORS, token.UpdatedAt.Format(time.RFC3339), token.UUID,
+			token.Timeout, boolToSQLite(token.CORS), formatTime(token.UpdatedAt), token.UUID,
 		},
 	})
 	if err != nil {
 		return fmt.Errorf("update token: %w", err)
+	}
+	if conn.Changes() == 0 {
+		return ErrNotFound
+	}
+
+	return nil
+}
+
+// DeleteToken removes a token.
+func (s *Store) DeleteToken(ctx context.Context, uuid string) error {
+	conn, err := s.take(ctx)
+	if err != nil {
+		return err
+	}
+	defer s.pool.Put(conn)
+
+	err = sqlitex.ExecuteTransient(conn, "DELETE FROM tokens WHERE uuid = ?", &sqlitex.ExecOptions{
+		Args: []any{uuid},
+	})
+	if err != nil {
+		return fmt.Errorf("delete token: %w", err)
+	}
+	if conn.Changes() == 0 {
+		return ErrNotFound
 	}
 
 	return nil
@@ -243,9 +340,9 @@ func (s *Store) UpdateToken(ctx context.Context, token *models.Token) error {
 
 // CreateRequest inserts a new captured request into the database.
 func (s *Store) CreateRequest(ctx context.Context, req *models.Request) error {
-	conn := s.pool.Get(ctx)
-	if conn == nil {
-		return fmt.Errorf("failed to get connection")
+	conn, err := s.take(ctx)
+	if err != nil {
+		return err
 	}
 	defer s.pool.Put(conn)
 
@@ -253,10 +350,10 @@ func (s *Store) CreateRequest(ctx context.Context, req *models.Request) error {
 		uuid, token_id, ip, hostname, method, user_agent, content, query, headers, form_data, url, created_at
 	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
-	err := sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
+	err = sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
 		Args: []any{
 			req.UUID, req.TokenID, req.IP, req.Hostname, req.Method, req.UserAgent,
-			req.Content, req.Query, req.Headers, req.FormData, req.URL, req.CreatedAt.Format(time.RFC3339),
+			req.Content, req.Query, req.Headers, req.FormData, req.URL, formatTime(req.CreatedAt),
 		},
 	})
 	if err != nil {
@@ -266,64 +363,99 @@ func (s *Store) CreateRequest(ctx context.Context, req *models.Request) error {
 	return nil
 }
 
-// GetRequestsByToken retrieves a paginated list of requests for a token, sorted by creation date descending.
-func (s *Store) GetRequestsByToken(ctx context.Context, tokenID string, limit, offset int) ([]*models.Request, error) {
-	conn := s.pool.Get(ctx)
-	if conn == nil {
-		return nil, fmt.Errorf("failed to get connection")
+// GetRequest retrieves a single captured request scoped to a token.
+func (s *Store) GetRequest(ctx context.Context, tokenID, requestID string) (*models.Request, error) {
+	conn, err := s.take(ctx)
+	if err != nil {
+		return nil, err
 	}
 	defer s.pool.Put(conn)
 
-	query := `SELECT 
+	query := `SELECT
 		uuid, token_id, ip, hostname, method, user_agent, content, query, headers, form_data, url, created_at
-	FROM requests 
-	WHERE token_id = ? 
-	ORDER BY created_at DESC 
-	LIMIT ? OFFSET ?`
+	FROM requests
+	WHERE token_id = ? AND uuid = ?`
+
+	var req *models.Request
+	err = sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
+		Args: []any{tokenID, requestID},
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			var scanErr error
+			req, scanErr = scanRequest(stmt)
+			return scanErr
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get request: %w", err)
+	}
+	if req == nil {
+		return nil, ErrNotFound
+	}
+
+	return req, nil
+}
+
+// ListRequestsByToken retrieves a paginated list of requests for a token.
+func (s *Store) ListRequestsByToken(ctx context.Context, tokenID string, params RequestListParams) (*RequestPage, error) {
+	conn, err := s.take(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer s.pool.Put(conn)
+
+	params = normalizeRequestListParams(params)
+	total, err := queryCount(conn, "SELECT COUNT(*) FROM requests WHERE token_id = ?", []any{tokenID})
+	if err != nil {
+		return nil, fmt.Errorf("count requests: %w", err)
+	}
+
+	query := fmt.Sprintf(`SELECT
+		uuid, token_id, ip, hostname, method, user_agent, content, query, headers, form_data, url, created_at
+	FROM requests
+	WHERE token_id = ?
+	ORDER BY %s %s
+	LIMIT ? OFFSET ?`, requestSortColumn(params.SortBy), sortDirection(params.Order))
 
 	var requests []*models.Request
-	err := sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
-		Args: []any{tokenID, limit, offset},
+	err = sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
+		Args: []any{tokenID, params.Limit, params.Offset},
 		ResultFunc: func(stmt *sqlite.Stmt) error {
-			req := &models.Request{
-				UUID:      stmt.ColumnText(0),
-				TokenID:   stmt.ColumnText(1),
-				IP:        stmt.ColumnText(2),
-				Hostname:  stmt.ColumnText(3),
-				Method:    stmt.ColumnText(4),
-				UserAgent: stmt.ColumnText(5),
-				Content:   stmt.ColumnText(6),
-				Query:     stmt.ColumnText(7),
-				Headers:   stmt.ColumnText(8),
-				FormData:  stmt.ColumnText(9),
-				URL:       stmt.ColumnText(10),
+			req, scanErr := scanRequest(stmt)
+			if scanErr != nil {
+				return scanErr
 			}
-			createdAtStr := stmt.ColumnText(11)
-			req.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
 			requests = append(requests, req)
 			return nil
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("get requests: %w", err)
+		return nil, fmt.Errorf("list requests: %w", err)
 	}
 
-	return requests, nil
+	return &RequestPage{
+		Requests: requests,
+		Total:    total,
+		Limit:    params.Limit,
+		Offset:   params.Offset,
+	}, nil
 }
 
-// DeleteRequest removes a single request.
-func (s *Store) DeleteRequest(ctx context.Context, uuid string) error {
-	conn := s.pool.Get(ctx)
-	if conn == nil {
-		return fmt.Errorf("failed to get connection")
+// DeleteRequest removes a single request scoped to a token.
+func (s *Store) DeleteRequest(ctx context.Context, tokenID, requestID string) error {
+	conn, err := s.take(ctx)
+	if err != nil {
+		return err
 	}
 	defer s.pool.Put(conn)
 
-	err := sqlitex.ExecuteTransient(conn, "DELETE FROM requests WHERE uuid = ?", &sqlitex.ExecOptions{
-		Args: []any{uuid},
+	err = sqlitex.ExecuteTransient(conn, "DELETE FROM requests WHERE token_id = ? AND uuid = ?", &sqlitex.ExecOptions{
+		Args: []any{tokenID, requestID},
 	})
 	if err != nil {
 		return fmt.Errorf("delete request: %w", err)
+	}
+	if conn.Changes() == 0 {
+		return ErrNotFound
 	}
 
 	return nil
@@ -331,13 +463,21 @@ func (s *Store) DeleteRequest(ctx context.Context, uuid string) error {
 
 // DeleteAllRequestsByToken removes all requests for a token.
 func (s *Store) DeleteAllRequestsByToken(ctx context.Context, tokenID string) error {
-	conn := s.pool.Get(ctx)
-	if conn == nil {
-		return fmt.Errorf("failed to get connection")
+	conn, err := s.take(ctx)
+	if err != nil {
+		return err
 	}
 	defer s.pool.Put(conn)
 
-	err := sqlitex.ExecuteTransient(conn, "DELETE FROM requests WHERE token_id = ?", &sqlitex.ExecOptions{
+	exists, err := tokenExists(conn, tokenID)
+	if err != nil {
+		return fmt.Errorf("check token exists: %w", err)
+	}
+	if !exists {
+		return ErrNotFound
+	}
+
+	err = sqlitex.ExecuteTransient(conn, "DELETE FROM requests WHERE token_id = ?", &sqlitex.ExecOptions{
 		Args: []any{tokenID},
 	})
 	if err != nil {
@@ -345,4 +485,185 @@ func (s *Store) DeleteAllRequestsByToken(ctx context.Context, tokenID string) er
 	}
 
 	return nil
+}
+
+func queryCount(conn *sqlite.Conn, query string, args []any) (int, error) {
+	var total int
+	err := sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
+		Args: args,
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			total = stmt.ColumnInt(0)
+			return nil
+		},
+	})
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+func tokenExists(conn *sqlite.Conn, tokenID string) (bool, error) {
+	var exists bool
+	err := sqlitex.ExecuteTransient(conn, "SELECT 1 FROM tokens WHERE uuid = ? LIMIT 1", &sqlitex.ExecOptions{
+		Args: []any{tokenID},
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			exists = stmt.ColumnInt(0) == 1
+			return nil
+		},
+	})
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+func scanToken(stmt *sqlite.Stmt) (*models.Token, error) {
+	token := &models.Token{
+		UUID:               stmt.ColumnText(0),
+		ReceiveMode:        stmt.ColumnText(2),
+		ViewMode:           stmt.ColumnText(3),
+		DefaultStatus:      stmt.ColumnInt(6),
+		DefaultContent:     stmt.ColumnText(7),
+		DefaultContentType: stmt.ColumnText(8),
+		Timeout:            stmt.ColumnInt(9),
+		CORS:               stmt.ColumnInt(10) != 0,
+	}
+
+	if !stmt.ColumnIsNull(1) {
+		ownerID := stmt.ColumnText(1)
+		token.OwnerID = &ownerID
+	}
+	if !stmt.ColumnIsNull(4) {
+		hash := stmt.ColumnText(4)
+		token.ReceiveSecretHash = &hash
+	}
+	if !stmt.ColumnIsNull(5) {
+		prefix := stmt.ColumnText(5)
+		token.ReceiveSecretPrefix = &prefix
+	}
+
+	var err error
+	token.CreatedAt, err = parseTime(stmt.ColumnText(11))
+	if err != nil {
+		return nil, fmt.Errorf("parse token created_at: %w", err)
+	}
+	token.UpdatedAt, err = parseTime(stmt.ColumnText(12))
+	if err != nil {
+		return nil, fmt.Errorf("parse token updated_at: %w", err)
+	}
+
+	return token, nil
+}
+
+func scanRequest(stmt *sqlite.Stmt) (*models.Request, error) {
+	req := &models.Request{
+		UUID:      stmt.ColumnText(0),
+		TokenID:   stmt.ColumnText(1),
+		IP:        stmt.ColumnText(2),
+		Hostname:  stmt.ColumnText(3),
+		Method:    stmt.ColumnText(4),
+		UserAgent: stmt.ColumnText(5),
+		Content:   stmt.ColumnText(6),
+		Query:     stmt.ColumnText(7),
+		Headers:   stmt.ColumnText(8),
+		FormData:  stmt.ColumnText(9),
+		URL:       stmt.ColumnText(10),
+	}
+
+	var err error
+	req.CreatedAt, err = parseTime(stmt.ColumnText(11))
+	if err != nil {
+		return nil, fmt.Errorf("parse request created_at: %w", err)
+	}
+
+	return req, nil
+}
+
+func parseTime(value string) (time.Time, error) {
+	return time.Parse(timestampLayout, value)
+}
+
+func formatTime(value time.Time) string {
+	return value.UTC().Format(timestampLayout)
+}
+
+func boolToSQLite(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+func nullableString(value *string) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+func normalizeTokenListParams(params TokenListParams) TokenListParams {
+	params.Limit = normalizeLimit(params.Limit)
+	params.Offset = normalizeOffset(params.Offset)
+	if params.SortBy == "" {
+		params.SortBy = "created_at"
+	}
+	if params.Order == "" {
+		params.Order = "desc"
+	}
+	return params
+}
+
+func normalizeRequestListParams(params RequestListParams) RequestListParams {
+	params.Limit = normalizeLimit(params.Limit)
+	params.Offset = normalizeOffset(params.Offset)
+	if params.SortBy == "" {
+		params.SortBy = "created_at"
+	}
+	if params.Order == "" {
+		params.Order = "desc"
+	}
+	return params
+}
+
+func normalizeLimit(limit int) int {
+	switch {
+	case limit <= 0:
+		return defaultPageSize
+	case limit > maxPageSize:
+		return maxPageSize
+	default:
+		return limit
+	}
+}
+
+func normalizeOffset(offset int) int {
+	if offset < 0 {
+		return 0
+	}
+	return offset
+}
+
+func tokenSortColumn(sortBy string) string {
+	switch strings.ToLower(sortBy) {
+	case "updated_at":
+		return "updated_at"
+	default:
+		return "created_at"
+	}
+}
+
+func requestSortColumn(sortBy string) string {
+	switch strings.ToLower(sortBy) {
+	case "created_at":
+		return "created_at"
+	default:
+		return "created_at"
+	}
+}
+
+func sortDirection(order string) string {
+	if strings.EqualFold(order, "asc") {
+		return "ASC"
+	}
+	return "DESC"
 }
