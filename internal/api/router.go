@@ -16,6 +16,7 @@ import (
 // NewRouter creates the HTTP router with all routes.
 func NewRouter(db *store.Store, eventHub *hub.Hub) http.Handler {
 	r := chi.NewRouter()
+	tokenHandler := newTokenHandler(db)
 
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
@@ -25,7 +26,11 @@ func NewRouter(db *store.Store, eventHub *hub.Hub) http.Handler {
 	// API routes
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/tokens", func(r chi.Router) {
-			// Token CRUD - to be implemented
+			r.Post("/", tokenHandler.createToken)
+			r.Get("/", tokenHandler.listTokens)
+			r.Get("/{tokenId}", tokenHandler.getToken)
+			r.Put("/{tokenId}", tokenHandler.updateToken)
+			r.Delete("/{tokenId}", tokenHandler.deleteToken)
 		})
 	})
 
