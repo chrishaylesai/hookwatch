@@ -10,6 +10,7 @@ type Hub struct {
 
 // Event represents an SSE event to be broadcast to subscribers.
 type Event struct {
+	ID   string
 	Type string
 	Data []byte
 }
@@ -43,16 +44,23 @@ func (h *Hub) Unsubscribe(tokenID string, ch chan Event) {
 		}
 	}
 	h.mu.Unlock()
-	close(ch)
 }
 
 // Publish sends an event to all subscribers of a token.
 func (h *Hub) Publish(tokenID string, event Event) {
 	h.mu.RLock()
 	subs := h.subscribers[tokenID]
+	if len(subs) == 0 {
+		h.mu.RUnlock()
+		return
+	}
+	channels := make([]chan Event, 0, len(subs))
+	for ch := range subs {
+		channels = append(channels, ch)
+	}
 	h.mu.RUnlock()
 
-	for ch := range subs {
+	for _, ch := range channels {
 		select {
 		case ch <- event:
 		default:

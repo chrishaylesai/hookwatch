@@ -7,6 +7,14 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
+	<title>HookWatch</title>
+	<meta
+		name="description"
+		content="A modern webhook inspector for capturing, replaying, and debugging HTTP traffic."
+	/>
+	<meta name="theme-color" content="#f4efe4" />
 </svelte:head>
 
-{@render children()}
+<div class="min-h-screen">
+	{@render children()}
+</div>

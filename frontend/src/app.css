@@ -1,1 +1,70 @@
 @import 'tailwindcss';
+
+:root {
+	--background: #f4efe4;
+	--foreground: #152127;
+	--muted-foreground: #4f5d61;
+	--card: rgba(255, 255, 255, 0.72);
+	--border: rgba(21, 33, 39, 0.12);
+	--accent-soft: rgba(65, 129, 120, 0.14);
+	--accent-strong: #1f7a6a;
+	--accent-strong-hover: #185e52;
+	--accent-foreground: #f3f7f5;
+	--ring: rgba(31, 122, 106, 0.45);
+	--radius: 1.5rem;
+}
+
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-card: var(--card);
+	--color-border: var(--border);
+	--color-accent-soft: var(--accent-soft);
+	--color-accent-strong: var(--accent-strong);
+	--color-accent-foreground: var(--accent-foreground);
+	--font-sans:
+		'Avenir Next', 'Segoe UI', 'Helvetica Neue', 'Arial Nova', 'Nimbus Sans', Arial,
+		sans-serif;
+	--font-serif:
+		'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', 'Cormorant Garamond', Georgia,
+		serif;
+	--font-mono:
+		'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', 'Ubuntu Mono', 'Liberation Mono',
+		monospace;
+}
+
+@layer base {
+	* {
+		box-sizing: border-box;
+	}
+
+	html {
+		background:
+			radial-gradient(circle at top, rgba(255, 255, 255, 0.9), transparent 42%),
+			linear-gradient(180deg, #efe7d9 0%, #f4efe4 38%, #f6f2ea 100%);
+		color: var(--foreground);
+		font-family: var(--font-sans);
+	}
+
+	body {
+		min-height: 100vh;
+		margin: 0;
+		background:
+			radial-gradient(circle at top right, rgba(192, 217, 213, 0.55), transparent 26%),
+			radial-gradient(circle at left center, rgba(240, 213, 164, 0.22), transparent 25%);
+		color: var(--foreground);
+	}
+
+	a {
+		color: inherit;
+		text-decoration: none;
+	}
+
+	button,
+	input,
+	textarea,
+	select {
+		font: inherit;
+	}
+}

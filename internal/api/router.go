@@ -14,9 +14,12 @@ import (
 )
 
 // NewRouter creates the HTTP router with all routes.
-func NewRouter(db *store.Store, eventHub *hub.Hub) http.Handler {
+func NewRouter(db *store.Store, eventHub *hub.Hub, authMode string) http.Handler {
 	r := chi.NewRouter()
-	tokenHandler := newTokenHandler(db)
+	tokenHandler := newTokenHandler(db, eventHub, authMode)
+	requestHandler := newRequestHandler(db)
+	captureHandler := newCaptureHandler(db, eventHub)
+	eventHandler := newEventHandler(db, eventHub)
 
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
@@ -31,6 +34,13 @@ func NewRouter(db *store.Store, eventHub *hub.Hub) http.Handler {
 			r.Get("/{tokenId}", tokenHandler.getToken)
 			r.Put("/{tokenId}", tokenHandler.updateToken)
 			r.Delete("/{tokenId}", tokenHandler.deleteToken)
+			r.Post("/{tokenId}/rotate-secret", tokenHandler.rotateReceiveSecret)
+			r.Get("/{tokenId}/events", eventHandler.stream)
+			r.Get("/{tokenId}/requests", requestHandler.listRequests)
+			r.Delete("/{tokenId}/requests", requestHandler.deleteAllRequests)
+			r.Get("/{tokenId}/requests/{requestId}", requestHandler.getRequest)
+			r.Get("/{tokenId}/requests/{requestId}/raw", requestHandler.getRawRequest)
+			r.Delete("/{tokenId}/requests/{requestId}", requestHandler.deleteRequest)
 		})
 	})
 
@@ -39,9 +49,9 @@ func NewRouter(db *store.Store, eventHub *hub.Hub) http.Handler {
 		panic(err)
 	}
 
-	// Webhook capture - catch-all at root
-	// r.HandleFunc("/{tokenId}", captureHandler)
-	// r.HandleFunc("/{tokenId}/*", captureHandler)
+	// Webhook capture is restricted to UUID-like first path segments so SPA routes still fall through.
+	r.HandleFunc("/{tokenId:[0-9a-fA-F-]{36}}", captureHandler.capture)
+	r.HandleFunc("/{tokenId:[0-9a-fA-F-]{36}}/*", captureHandler.capture)
 	r.Handle("/*", spaHandler(staticFS))
 
 	return r
