@@ -51,3 +51,34 @@ export type TokenUpdatedEvent = {
 export type TokenDeletedEvent = {
 	token_id: string;
 };
+
+export type AuthUser = {
+	id: string;
+	email: string;
+	display_name: string;
+	global_role: string;
+	created_at: string;
+};
+
+export type AuthInfo = {
+	auth_mode: string;
+};
+
+export type HookGrant = {
+	id: string;
+	token_id: string;
+	user_id: string;
+	role: string;
+	granted_by: string;
+	created_at: string;
+};
+
+export type AdminUser = {
+	id: string;
+	email: string;
+	display_name: string;
+	global_role: string;
+	oidc_provider?: string;
+	created_at: string;
+	updated_at: string;
+};

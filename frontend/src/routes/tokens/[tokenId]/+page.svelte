@@ -6,7 +6,9 @@
 	import Card from '$lib/components/ui/card.svelte';
 	import Modal from '$lib/components/ui/modal.svelte';
 	import RequestBody from '$lib/components/request-body.svelte';
+	import { getAuth } from '$lib/auth.svelte';
 	import type {
+		HookGrant,
 		RequestCreatedEvent,
 		RequestListResponse,
 		RequestResponse,
@@ -59,6 +61,15 @@
 		receiveMode: 'public',
 		viewMode: 'public'
 	});
+
+	// Sharing / grant state
+	const auth = getAuth();
+	let grants = $state<HookGrant[]>([]);
+	let grantsLoading = $state(false);
+	let grantEmail = $state('');
+	let grantRole = $state<'viewer' | 'editor'>('viewer');
+	let grantError = $state('');
+	let grantAdding = $state(false);
 
 	const currentToken = $derived(tokenOverride ?? data.token);
 	const requestList = $derived(requestListOverride ?? data.requestList);
@@ -426,12 +437,75 @@
 		tokenSettingsError = '';
 	}
 
+	async function loadGrants() {
+		if (!auth.authEnabled) return;
+		grantsLoading = true;
+		try {
+			const res = await fetch(`/api/tokens/${currentToken.uuid}/grants`);
+			if (res.ok) {
+				const payload = await res.json();
+				grants = payload.data ?? [];
+			}
+		} catch {
+			// Silently fail — grants are optional
+		} finally {
+			grantsLoading = false;
+		}
+	}
+
+	async function addGrant() {
+		const trimmedEmail = grantEmail.trim();
+		if (!trimmedEmail) {
+			grantError = 'Email is required.';
+			return;
+		}
+
+		grantAdding = true;
+		grantError = '';
+
+		try {
+			const res = await fetch(`/api/tokens/${currentToken.uuid}/grants`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ email: trimmedEmail, role: grantRole })
+			});
+
+			if (!res.ok) {
+				const payload = await res.json().catch(() => null);
+				grantError = payload?.error ?? 'Failed to add grant';
+				return;
+			}
+
+			grantEmail = '';
+			grantRole = 'viewer';
+			await loadGrants();
+		} catch {
+			grantError = 'Network error.';
+		} finally {
+			grantAdding = false;
+		}
+	}
+
+	async function removeGrant(userId: string) {
+		try {
+			await fetch(`/api/tokens/${currentToken.uuid}/grants/${userId}`, {
+				method: 'DELETE'
+			});
+			await loadGrants();
+		} catch {
+			// Best effort
+		}
+	}
+
 	function openAccessSettingsModal() {
 		accessSettingsDraft = createAccessSettingsDraft(currentToken);
 		accessSettingsError = '';
 		receiveSecretCopyState = 'idle';
 		rotateSecretState = 'idle';
+		grantEmail = '';
+		grantError = '';
 		accessSettingsOpen = true;
+		loadGrants();
 	}
 
 	function closeAccessSettingsModal() {
@@ -1219,6 +1293,70 @@
 				{/if}
 			</div>
 		</div>
+
+		{#if auth.authEnabled}
+			<div class="rounded-[24px] border border-black/8 bg-white/72 px-4 py-4">
+				<div class="flex flex-wrap items-start justify-between gap-3">
+					<div>
+						<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+							Sharing
+						</p>
+						<p class="mt-2 text-sm leading-7 text-[var(--foreground)]">
+							Grant other users access to view or edit this hook.
+						</p>
+					</div>
+				</div>
+
+				<div class="mt-4 space-y-3">
+					<div class="flex flex-col gap-2 sm:flex-row">
+						<input
+							class="flex-1 rounded-[18px] border border-black/10 bg-white/80 px-4 py-2.5 text-sm outline-none transition focus:border-[var(--accent-strong)]"
+							type="email"
+							placeholder="User email"
+							bind:value={grantEmail}
+						/>
+						<select
+							class="rounded-[18px] border border-black/10 bg-white/80 px-3 py-2.5 text-sm outline-none"
+							bind:value={grantRole}
+						>
+							<option value="viewer">Viewer</option>
+							<option value="editor">Editor</option>
+						</select>
+						<Button type="button" size="sm" onclick={addGrant} disabled={grantAdding}>
+							{grantAdding ? 'Adding...' : 'Add'}
+						</Button>
+					</div>
+
+					{#if grantError}
+						<p class="text-sm text-red-700">{grantError}</p>
+					{/if}
+
+					{#if grantsLoading}
+						<p class="text-sm text-[var(--muted-foreground)]">Loading grants...</p>
+					{:else if grants.length > 0}
+						<div class="space-y-2">
+							{#each grants as grant}
+								<div class="flex items-center justify-between rounded-[18px] border border-black/8 bg-white/60 px-4 py-2.5">
+									<div class="min-w-0 flex-1">
+										<p class="truncate text-sm">{grant.user_id}</p>
+										<p class="text-xs capitalize text-[var(--muted-foreground)]">{grant.role}</p>
+									</div>
+									<button
+										type="button"
+										class="ml-3 shrink-0 text-sm text-red-600 hover:text-red-800 hover:underline"
+										onclick={() => removeGrant(grant.user_id)}
+									>
+										Remove
+									</button>
+								</div>
+							{/each}
+						</div>
+					{:else}
+						<p class="text-sm text-[var(--muted-foreground)]">No grants. Only the owner can access this hook.</p>
+					{/if}
+				</div>
+			</div>
+		{/if}
 
 		{#if accessSettingsError}
 			<div
