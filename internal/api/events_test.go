@@ -56,7 +56,7 @@ func TestEventsEndpointStreamsRequestCreated(t *testing.T) {
 
 	time.Sleep(20 * time.Millisecond)
 
-	router := NewRouter(db, eventHub, authModeNone)
+	router := NewRouter(db, eventHub, authModeNone, nil)
 	captureReq := httptest.NewRequest(http.MethodPost, "/"+tokenID+"/incoming", strings.NewReader(`{"ok":true}`))
 	captureReq.Header.Set("Content-Type", "application/json")
 	captureRec := httptest.NewRecorder()
@@ -105,7 +105,7 @@ func TestEventsEndpointHidesPrivateViewHooks(t *testing.T) {
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	router := NewRouter(db, eventHub, authModeNone)
+	router := NewRouter(db, eventHub, authModeNone, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/tokens/"+tokenID+"/events", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)

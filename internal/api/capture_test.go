@@ -39,7 +39,7 @@ func TestCaptureWebhookStoresRequestAndUsesTokenDefaults(t *testing.T) {
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 	req := httptest.NewRequest(http.MethodPost, "/"+tokenID+"/webhook/github?foo=bar", strings.NewReader("event=push&branch=main"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", "hookwatch-test")
@@ -108,7 +108,7 @@ func TestCaptureWebhookMissingTokenReturnsNotFound(t *testing.T) {
 	t.Parallel()
 
 	db := newTestStore(t)
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/550e8400-e29b-41d4-a716-446655440000/webhook", strings.NewReader("{}"))
 	rec := httptest.NewRecorder()
@@ -144,7 +144,7 @@ func TestCaptureWebhookExpiredTokenReturnsGone(t *testing.T) {
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 	req := httptest.NewRequest(http.MethodPost, "/"+tokenID+"/webhook", strings.NewReader("payload"))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -179,7 +179,7 @@ func TestCaptureWebhookReturnsGoneWhenQuotaExceeded(t *testing.T) {
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 
 	firstReq := httptest.NewRequest(http.MethodPost, "/"+tokenID+"/incoming", strings.NewReader("first"))
 	firstRec := httptest.NewRecorder()
@@ -233,7 +233,7 @@ func TestCaptureWebhookRejectsPrivateReceiveModeWithoutSecret(t *testing.T) {
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 	req := httptest.NewRequest(http.MethodPost, "/"+tokenID+"/incoming", strings.NewReader("payload"))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -272,7 +272,7 @@ func TestCaptureWebhookAcceptsHeaderSecretAndScrubsItFromStoredRequest(t *testin
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 	req := httptest.NewRequest(http.MethodPost, "/"+tokenID+"/incoming?secret=wrong", strings.NewReader("payload"))
 	req.Header.Set("X-Hook-Secret", secret)
 	req.Header.Set("Authorization", "Basic dXNlcjp3cm9uZw==")
@@ -330,7 +330,7 @@ func TestCaptureWebhookAcceptsQuerySecretAndScrubsURL(t *testing.T) {
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 	req := httptest.NewRequest(http.MethodPost, "/"+tokenID+"/incoming?foo=bar&secret="+secret, strings.NewReader("payload"))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -381,7 +381,7 @@ func TestCaptureWebhookAcceptsBasicAuthSecretAndScrubsAuthorization(t *testing.T
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 	req := httptest.NewRequest(http.MethodPost, "/"+tokenID+"/incoming", strings.NewReader("payload"))
 	req.SetBasicAuth("", secret)
 	rec := httptest.NewRecorder()
@@ -425,7 +425,7 @@ func TestCaptureWebhookAddsCORSHeadersWhenEnabled(t *testing.T) {
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 	req := httptest.NewRequest(http.MethodOptions, "/"+tokenID+"/preflight", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -451,7 +451,7 @@ func TestNonTokenPathFallsBackToSPA(t *testing.T) {
 	t.Parallel()
 
 	db := newTestStore(t)
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
 	rec := httptest.NewRecorder()

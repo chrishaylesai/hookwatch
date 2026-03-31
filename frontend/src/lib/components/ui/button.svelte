@@ -27,6 +27,7 @@
 		class: className = '',
 		disabled = false,
 		href,
+		onclick,
 		rel,
 		size = 'default',
 		target,
@@ -37,6 +38,7 @@
 		class?: string;
 		disabled?: boolean;
 		href?: string;
+		onclick?: (event: MouseEvent) => void;
 		rel?: string;
 		size?: Size;
 		target?: string;
@@ -54,6 +56,7 @@
 			className
 		)}
 		href={disabled ? undefined : href}
+		{onclick}
 		rel={target === '_blank' ? (rel ?? 'noreferrer') : rel}
 		target={target}
 		aria-disabled={disabled}
@@ -69,6 +72,7 @@
 			className
 		)}
 		{disabled}
+		{onclick}
 		{type}
 	>
 		{@render children?.()}

@@ -18,7 +18,7 @@ func TestRequestEndpointsListGetAndDelete(t *testing.T) {
 
 	db := newTestStore(t)
 	seedRequestData(t, db)
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 
 	listReq := httptest.NewRequest(http.MethodGet, "/api/tokens/token-1/requests?per_page=1&page=2&method=post", nil)
 	listRec := httptest.NewRecorder()
@@ -120,7 +120,7 @@ func TestRequestEndpointsMissingToken(t *testing.T) {
 	t.Parallel()
 
 	db := newTestStore(t)
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/tokens/missing-token/requests", nil)
 	rec := httptest.NewRecorder()
@@ -153,7 +153,7 @@ func TestListRequestsHidesPrivateViewHooks(t *testing.T) {
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/tokens/"+token.UUID+"/requests", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)

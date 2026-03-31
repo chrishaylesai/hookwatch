@@ -17,7 +17,7 @@ func TestCreateTokenAcceptsConfigurableResponseFields(t *testing.T) {
 	t.Parallel()
 
 	db := newTestStore(t)
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 
 	body := []byte(`{
 		"default_status": 201,
@@ -70,7 +70,7 @@ func TestCreateTokenForcesPublicViewModeInAnonymousAuth(t *testing.T) {
 	t.Parallel()
 
 	db := newTestStore(t)
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/tokens", bytes.NewReader([]byte(`{
 		"receive_mode":"public",
@@ -96,7 +96,7 @@ func TestCreatePrivateTokenReturnsReceiveSecretAndStoresHashOnly(t *testing.T) {
 	t.Parallel()
 
 	db := newTestStore(t)
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/tokens", bytes.NewReader([]byte(`{
 		"receive_mode":"private"
@@ -160,7 +160,7 @@ func TestCreateTokenRejectsInvalidAccessModes(t *testing.T) {
 	t.Parallel()
 
 	db := newTestStore(t)
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/tokens", bytes.NewReader([]byte(`{
 		"receive_mode":"locked",
@@ -196,7 +196,7 @@ func TestGetTokenHidesPrivateViewHooks(t *testing.T) {
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/tokens/"+token.UUID, nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -229,7 +229,7 @@ func TestGetTokenReturnsGoneWhenExpired(t *testing.T) {
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/tokens/"+token.UUID, nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -262,7 +262,7 @@ func TestGetTokenRefreshesExpiry(t *testing.T) {
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/tokens/"+token.UUID, nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -302,7 +302,7 @@ func TestUpdateTokenRejectsInvalidTimeout(t *testing.T) {
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 	req := httptest.NewRequest(http.MethodPut, "/api/tokens/"+token.UUID, bytes.NewReader([]byte(`{"timeout":11}`)))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -316,7 +316,7 @@ func TestCreateTokenRejectsInvalidMaxRequests(t *testing.T) {
 	t.Parallel()
 
 	db := newTestStore(t)
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/tokens", bytes.NewReader([]byte(`{"max_requests":0}`)))
 	rec := httptest.NewRecorder()
@@ -349,7 +349,7 @@ func TestUpdateTokenPublicToPrivateReturnsOneTimeReceiveSecret(t *testing.T) {
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 	req := httptest.NewRequest(http.MethodPut, "/api/tokens/"+token.UUID, bytes.NewReader([]byte(`{"receive_mode":"private"}`)))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -410,7 +410,7 @@ func TestUpdateTokenPrivateToPublicClearsReceiveSecretState(t *testing.T) {
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 	req := httptest.NewRequest(http.MethodPut, "/api/tokens/"+token.UUID, bytes.NewReader([]byte(`{"receive_mode":"public"}`)))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -455,7 +455,7 @@ func TestRotateReceiveSecretReturnsNewSecretAndUpdatesStoredHash(t *testing.T) {
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 	req := httptest.NewRequest(http.MethodPost, "/api/tokens/"+token.UUID+"/rotate-secret", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -518,7 +518,7 @@ func TestRotateReceiveSecretRejectsPublicToken(t *testing.T) {
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 	req := httptest.NewRequest(http.MethodPost, "/api/tokens/"+token.UUID+"/rotate-secret", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -551,7 +551,7 @@ func TestCaptureWebhookHonorsConfiguredTimeout(t *testing.T) {
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	router := NewRouter(db, hub.New(), authModeNone)
+	router := NewRouter(db, hub.New(), authModeNone, nil)
 	req := httptest.NewRequest(http.MethodPost, "/"+tokenID, nil)
 	rec := httptest.NewRecorder()
 

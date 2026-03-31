@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/chrishaylesai/hookwatch"
+	"github.com/chrishaylesai/hookwatch/internal/auth"
+	"github.com/chrishaylesai/hookwatch/internal/authz"
 	"github.com/chrishaylesai/hookwatch/internal/hub"
 	"github.com/chrishaylesai/hookwatch/internal/store"
 	"github.com/go-chi/chi/v5"
@@ -14,20 +16,41 @@ import (
 )
 
 // NewRouter creates the HTTP router with all routes.
-func NewRouter(db *store.Store, eventHub *hub.Hub, authMode string) http.Handler {
+func NewRouter(db *store.Store, eventHub *hub.Hub, authMode string, authService *auth.Service) http.Handler {
 	r := chi.NewRouter()
 	tokenHandler := newTokenHandler(db, eventHub, authMode)
 	requestHandler := newRequestHandler(db)
 	captureHandler := newCaptureHandler(db, eventHub)
 	eventHandler := newEventHandler(db, eventHub)
 
+	policy := authz.NewPolicy(db, authMode)
+	authH := newAuthHandler(authService, authMode)
+	grantH := newGrantHandler(db, policy)
+	adminH := newAdminHandler(db)
+
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
+	// Inject authenticated user into context when auth is enabled
+	if authMode != "none" && authService != nil {
+		r.Use(authService.SessionMiddleware)
+	}
+
 	// API routes
 	r.Route("/api", func(r chi.Router) {
+		// Auth info endpoint (always available)
+		r.Get("/auth/info", authH.authInfo)
+
+		// Auth routes (only when auth is enabled)
+		if authMode != "none" {
+			r.Post("/auth/register", authH.register)
+			r.Post("/auth/login", authH.login)
+			r.Post("/auth/logout", authH.logout)
+			r.Get("/auth/me", authH.me)
+		}
+
 		r.Route("/tokens", func(r chi.Router) {
 			r.Post("/", tokenHandler.createToken)
 			r.Get("/", tokenHandler.listTokens)
@@ -41,7 +64,25 @@ func NewRouter(db *store.Store, eventHub *hub.Hub, authMode string) http.Handler
 			r.Get("/{tokenId}/requests/{requestId}", requestHandler.getRequest)
 			r.Get("/{tokenId}/requests/{requestId}/raw", requestHandler.getRawRequest)
 			r.Delete("/{tokenId}/requests/{requestId}", requestHandler.deleteRequest)
+
+			// Grant management routes
+			if authMode != "none" {
+				r.Get("/{tokenId}/grants", grantH.listGrants)
+				r.Post("/{tokenId}/grants", grantH.createGrant)
+				r.Delete("/{tokenId}/grants/{userId}", grantH.deleteGrant)
+			}
 		})
+
+		// Admin routes (require admin role)
+		if authMode != "none" {
+			r.Route("/admin", func(r chi.Router) {
+				r.Use(auth.RequireAdmin)
+				r.Get("/users", adminH.listUsers)
+				r.Get("/users/{userId}", adminH.getUser)
+				r.Put("/users/{userId}", adminH.updateUser)
+				r.Delete("/users/{userId}", adminH.deleteUser)
+			})
+		}
 	})
 
 	staticFS, err := hookwatch.FrontendFS()

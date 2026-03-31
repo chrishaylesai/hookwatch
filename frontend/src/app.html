@@ -1,6 +1,29 @@
 <!doctype html>
 <html lang="en">
 	<head>
+		<script>
+			(() => {
+				const storageKey = 'hookwatch-theme';
+				const root = document.documentElement;
+
+				try {
+					const savedTheme = localStorage.getItem(storageKey);
+					const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+					const theme =
+						savedTheme === 'dark' || savedTheme === 'light'
+							? savedTheme
+							: prefersDark
+								? 'dark'
+								: 'light';
+
+					root.dataset.theme = theme;
+					root.style.colorScheme = theme;
+				} catch {
+					root.dataset.theme = 'light';
+					root.style.colorScheme = 'light';
+				}
+			})();
+		</script>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		%sveltekit.head%
