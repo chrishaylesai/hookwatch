@@ -164,7 +164,7 @@
 	<div class="mb-8 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
 		<div>
 			<Badge tone="muted">Administration</Badge>
-			<h1 class="mt-2 font-[family-name:var(--font-serif)] text-3xl tracking-tight sm:text-4xl">
+			<h1 class="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
 				User management
 			</h1>
 			<p class="mt-2 text-sm text-[var(--muted-foreground)]">
@@ -175,7 +175,7 @@
 	</div>
 
 	{#if loadError}
-		<div class="mb-6 rounded-[20px] border border-red-300/60 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+		<div class="mb-6 rounded-lg border border-red-300/60 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
 			{loadError}
 		</div>
 	{/if}
@@ -258,28 +258,28 @@
 >
 	{#if editUser}
 		<form class="space-y-4" onsubmit={saveEditUser}>
-			<div class="rounded-[18px] border border-black/8 bg-white/60 px-4 py-3">
-				<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">Email</p>
+			<div class="rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3">
+				<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">Email</p>
 				<p class="mt-1 text-sm">{editUser.email}</p>
 			</div>
 
 			<label class="block space-y-2">
-				<span class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+				<span class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 					Display name
 				</span>
 				<input
-					class="w-full rounded-[18px] border border-black/10 bg-white/80 px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
+					class="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
 					type="text"
 					bind:value={editDisplayName}
 				/>
 			</label>
 
 			<label class="block space-y-2">
-				<span class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+				<span class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 					Global role
 				</span>
 				<select
-					class="w-full rounded-[18px] border border-black/10 bg-white/80 px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
+					class="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
 					bind:value={editRole}
 				>
 					<option value="user">User</option>
@@ -288,7 +288,7 @@
 			</label>
 
 			{#if editError}
-				<div class="rounded-[20px] border border-red-300/60 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+				<div class="rounded-lg border border-red-300/60 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
 					{editError}
 				</div>
 			{/if}
@@ -311,7 +311,7 @@
 >
 	{#if deleteConfirmUser}
 		<div class="space-y-4">
-			<div class="rounded-[18px] border border-red-200 bg-red-50 px-4 py-3">
+			<div class="rounded-md border border-red-200 bg-red-50 px-4 py-3">
 				<p class="text-sm text-red-800">
 					Are you sure you want to delete <strong>{deleteConfirmUser.display_name || deleteConfirmUser.email}</strong>?
 				</p>

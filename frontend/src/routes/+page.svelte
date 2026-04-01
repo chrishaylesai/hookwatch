@@ -124,20 +124,16 @@
 </svelte:head>
 
 <div class="relative overflow-hidden">
-	<div
-		class="pointer-events-none absolute inset-x-0 top-0 h-[34rem] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.92),transparent_52%)]"
-	></div>
-
 	<div class="mx-auto flex min-h-screen max-w-7xl flex-col px-4 pb-20 pt-4 sm:px-6 sm:pt-6 lg:px-10">
 		<header class="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
 			<div class="flex items-center gap-3">
 				<div
-					class="flex h-11 w-11 items-center justify-center rounded-full border border-black/10 bg-white/80 text-sm font-semibold shadow-[0_8px_30px_rgba(0,0,0,0.08)]"
+					class="flex h-11 w-11 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--card)] text-sm font-semibold"
 				>
 					HW
 				</div>
 				<div>
-					<p class="text-sm font-semibold uppercase tracking-[0.28em] text-[var(--muted-foreground)]">
+					<p class="text-sm font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 						HookWatch
 					</p>
 					<p class="text-sm text-[var(--muted-foreground)]">Modern webhook workbench</p>
@@ -151,7 +147,7 @@
 			<section class="space-y-8">
 				<div class="space-y-4">
 					<Badge>Home page</Badge>
-					<h1 class="max-w-3xl font-[family-name:var(--font-serif)] text-4xl leading-none tracking-[-0.04em] text-balance sm:text-5xl lg:text-7xl">
+					<h1 class="max-w-3xl text-4xl font-bold leading-tight tracking-tight text-balance sm:text-5xl lg:text-6xl">
 						Create a webhook URL and start sending requests right away.
 					</h1>
 					<p class="max-w-2xl text-base leading-7 text-[var(--muted-foreground)] sm:text-lg sm:leading-8 lg:text-xl">
@@ -168,7 +164,7 @@
 				<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
 					{#each featureCards as feature}
 						<Card class="space-y-4">
-							<p class="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted-foreground)]">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 								{feature.stat}
 							</p>
 							<div class="space-y-2">
@@ -182,8 +178,8 @@
 
 			<section id="create-webhook" class="space-y-5">
 				<Card class="overflow-hidden p-0">
-					<div class="border-b border-black/8 bg-[rgba(14,24,29,0.92)] px-5 py-5 text-white sm:px-6">
-						<p class="text-xs font-semibold uppercase tracking-[0.24em] text-white/60">
+					<div class="border-b border-[var(--border)] bg-[rgb(14,24,29)] px-5 py-5 text-white sm:px-6">
+						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-white/60">
 							Create endpoint
 						</p>
 						<h2 class="mt-3 text-2xl font-semibold">Provision a new webhook token</h2>
@@ -194,27 +190,27 @@
 					</div>
 
 					<form class="space-y-5 px-5 py-5 sm:px-6 sm:py-6" onsubmit={createWebhook}>
-						<div class="grid gap-3 rounded-[28px] border border-dashed border-black/10 bg-black/[0.02] p-4 sm:grid-cols-2">
+						<div class="grid gap-3 rounded-lg border border-dashed border-[var(--border)] bg-black/[0.02] p-4 sm:grid-cols-2">
 							<div>
-								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+								<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 									Receive mode
 								</p>
 								<p class="mt-2 text-sm font-medium">Public</p>
 							</div>
 							<div>
-								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+								<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 									View mode
 								</p>
 								<p class="mt-2 text-sm font-medium">Public</p>
 							</div>
 							<div>
-								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+								<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 									Default response
 								</p>
 								<p class="mt-2 text-sm font-medium">`200 text/plain`</p>
 							</div>
 							<div>
-								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+								<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 									Storage quota
 								</p>
 								<p class="mt-2 text-sm font-medium">Backend default max requests</p>
@@ -236,7 +232,7 @@
 
 						{#if createError}
 							<div
-								class="rounded-[24px] border border-red-300/60 bg-red-50 px-4 py-3 text-sm text-red-800"
+								class="rounded-lg border border-red-300/60 bg-red-50 px-4 py-3 text-sm text-red-800"
 								role="alert"
 							>
 								{createError}
@@ -248,7 +244,7 @@
 				<Card class="space-y-5">
 					<div class="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
 						<div>
-							<p class="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted-foreground)]">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 								Generated URL
 							</p>
 							<h2 class="mt-2 text-2xl font-semibold">Ready-to-use endpoint</h2>
@@ -262,8 +258,8 @@
 
 					{#if createdToken}
 						<div class="space-y-4">
-							<div class="rounded-[28px] bg-[rgba(15,25,29,0.95)] px-5 py-5 text-white">
-								<p class="text-xs font-semibold uppercase tracking-[0.2em] text-white/55">
+							<div class="rounded-lg bg-[rgb(15,25,29)] px-5 py-5 text-white">
+								<p class="text-xs font-semibold uppercase tracking-[0.05em] text-white/55">
 									Webhook URL
 								</p>
 								<p class="mt-3 break-all font-mono text-sm leading-7 sm:text-base">{webhookUrl}</p>
@@ -289,26 +285,26 @@
 							</div>
 
 							<div class="grid gap-3 sm:grid-cols-2">
-								<div class="rounded-[24px] border border-black/8 bg-white/70 px-4 py-4">
-									<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+								<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+									<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 										Token UUID
 									</p>
 									<p class="mt-2 break-all font-mono text-sm">{createdToken.uuid}</p>
 								</div>
-								<div class="rounded-[24px] border border-black/8 bg-white/70 px-4 py-4">
-									<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+								<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+									<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 										Expires
 									</p>
 									<p class="mt-2 text-sm">{expiresAtLabel}</p>
 								</div>
-								<div class="rounded-[24px] border border-black/8 bg-white/70 px-4 py-4">
-									<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+								<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+									<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 										Created
 									</p>
 									<p class="mt-2 text-sm">{createdAtLabel}</p>
 								</div>
-								<div class="rounded-[24px] border border-black/8 bg-white/70 px-4 py-4">
-									<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+								<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+									<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 										Default behavior
 									</p>
 									<p class="mt-2 text-sm">
@@ -318,7 +314,7 @@
 							</div>
 						</div>
 					{:else}
-						<div class="rounded-[28px] border border-dashed border-black/12 bg-black/[0.02] px-5 py-6">
+						<div class="rounded-lg border border-dashed border-[var(--border)] bg-black/[0.02] px-5 py-6">
 							<p class="text-sm leading-7 text-[var(--muted-foreground)]">
 								Create a token to reveal its full webhook URL here. Once generated, you can
 								copy it directly into `curl`, test suites, payment provider dashboards, or any
@@ -332,11 +328,11 @@
 
 		<section
 			id="scaffold"
-			class="grid gap-5 border-t border-black/8 pt-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-start"
+			class="grid gap-5 border-t border-[var(--border)] pt-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-start"
 		>
 			<div class="space-y-3">
 				<Badge tone="muted">Foundation</Badge>
-				<h2 class="font-[family-name:var(--font-serif)] text-3xl tracking-[-0.03em] sm:text-4xl">
+				<h2 class="text-2xl font-bold tracking-tight sm:text-3xl">
 					What this home page now handles
 				</h2>
 				<p class="max-w-xl text-base leading-7 text-[var(--muted-foreground)]">
@@ -350,7 +346,7 @@
 				{#each scaffoldItems as item, index}
 					<Card class="flex items-start gap-4">
 						<div
-							class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] text-sm font-semibold text-[var(--accent-strong)]"
+							class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[var(--accent-soft)] text-sm font-semibold text-[var(--accent-strong)]"
 						>
 							{index + 1}
 						</div>

@@ -7,13 +7,13 @@
 
 	const variantClasses: Record<Variant, string> = {
 		default:
-			'bg-[var(--accent-strong)] text-[var(--accent-foreground)] shadow-[0_18px_40px_rgba(15,37,43,0.18)] hover:-translate-y-0.5 hover:bg-[var(--accent-strong-hover)]',
+			'bg-[var(--accent-strong)] text-[var(--accent-foreground)] hover:bg-[var(--accent-strong-hover)]',
 		secondary:
-			'bg-white/88 text-[var(--foreground)] ring-1 ring-black/10 hover:-translate-y-0.5 hover:bg-white',
+			'bg-[var(--card)] text-[var(--foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent-soft)]',
 		ghost:
-			'bg-transparent text-[var(--muted-foreground)] hover:bg-white/12 hover:text-[var(--foreground)]',
+			'bg-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent-soft)] hover:text-[var(--foreground)]',
 		outline:
-			'border border-white/40 bg-white/8 text-[var(--foreground)] hover:border-white/55 hover:bg-white/14'
+			'border border-[var(--border)] bg-transparent text-[var(--foreground)] hover:bg-[var(--accent-soft)]'
 	};
 
 	const sizeClasses: Record<Size, string> = {
@@ -50,7 +50,7 @@
 {#if href}
 	<a
 		class={cn(
-			'inline-flex items-center justify-center gap-2 rounded-full font-medium tracking-[0.01em] transition duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] disabled:pointer-events-none disabled:opacity-55',
+			'inline-flex items-center justify-center gap-2 rounded-md font-medium tracking-[0.01em] transition duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] disabled:pointer-events-none disabled:opacity-55',
 			variantClasses[variant],
 			sizeClasses[size],
 			className
@@ -66,7 +66,7 @@
 {:else}
 	<button
 		class={cn(
-			'inline-flex items-center justify-center gap-2 rounded-full font-medium tracking-[0.01em] transition duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] disabled:pointer-events-none disabled:opacity-55',
+			'inline-flex items-center justify-center gap-2 rounded-md font-medium tracking-[0.01em] transition duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] disabled:pointer-events-none disabled:opacity-55',
 			variantClasses[variant],
 			sizeClasses[size],
 			className
