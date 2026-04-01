@@ -49,6 +49,7 @@
 	let receiveSecretCopyState = $state<'idle' | 'done' | 'error'>('idle');
 	let receiveSecretOverride = $state<string | null | undefined>(undefined);
 	let liveUpdatesState = $state<'connecting' | 'live' | 'reconnecting'>('connecting');
+	let tokenDetailsExpanded = $state(false);
 	let pendingNewerRequests = $state(0);
 	let tokenSettingsDraft = $state<TokenSettingsDraft>({
 		defaultStatus: '',
@@ -692,7 +693,162 @@
 			<Button href="/" variant="secondary" class="w-full sm:w-auto">Create another hook</Button>
 		</header>
 
-	<main class="grid flex-1 gap-8 pt-10 lg:grid-cols-[0.84fr_1.16fr]">
+	<main class="flex flex-1 flex-col gap-8 pt-10">
+		<div class="space-y-6">
+			<Card class={tokenDetailsExpanded ? 'space-y-5' : ''}>
+				<button
+					type="button"
+					class="flex w-full cursor-pointer items-center justify-between gap-3 text-left"
+					onclick={() => (tokenDetailsExpanded = !tokenDetailsExpanded)}
+				>
+					<div class="flex flex-1 flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+						<div>
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+								Token details
+							</p>
+							<h2 class="mt-2 text-2xl font-semibold">Current configuration</h2>
+						</div>
+						<div class="flex flex-wrap items-center gap-2">
+							<Badge tone="muted">{currentToken.view_mode} view</Badge>
+							<Badge tone="muted">{currentToken.receive_mode} receive</Badge>
+							<Badge tone="muted">{currentToken.default_status}</Badge>
+						</div>
+					</div>
+					<svg
+						class="h-5 w-5 shrink-0 text-[var(--muted-foreground)] transition-transform duration-200 {tokenDetailsExpanded ? 'rotate-180' : ''}"
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 20 20"
+						fill="currentColor"
+					>
+						<path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+					</svg>
+				</button>
+
+				{#if tokenDetailsExpanded}
+					<div class="flex flex-wrap items-center gap-3">
+						<Button type="button" size="sm" variant="secondary" onclick={openTokenSettingsModal}>
+							Edit settings
+						</Button>
+						<Button type="button" size="sm" variant="outline" onclick={openAccessSettingsModal}>
+							Access
+						</Button>
+					</div>
+
+					<div class="grid gap-3 sm:grid-cols-2">
+						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+								Token UUID
+							</p>
+							<p class="mt-2 break-all font-mono text-sm">{currentToken.uuid}</p>
+						</div>
+						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+								Expires
+							</p>
+							<p class="mt-2 text-sm">{expiresAtLabel}</p>
+						</div>
+						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+								Created
+							</p>
+							<p class="mt-2 text-sm">{createdAtLabel}</p>
+						</div>
+						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+								Default response
+							</p>
+							<p class="mt-2 text-sm">
+								{currentToken.default_status} {currentToken.default_content_type}
+							</p>
+						</div>
+						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+								Receive mode
+							</p>
+							<p class="mt-2 text-sm">{currentToken.receive_mode}</p>
+						</div>
+						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+								View mode
+							</p>
+							<p class="mt-2 text-sm">{currentToken.view_mode}</p>
+						</div>
+						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4 sm:col-span-2">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+								Receive secret
+							</p>
+							<p class="mt-2 text-sm">
+								{#if currentToken.receive_mode === 'private'}
+									{#if latestReceiveSecret}
+										Available in access settings modal
+									{:else if receiveSecretPrefix}
+										Stored with prefix `{receiveSecretPrefix}`. Rotate to reveal a new secret.
+									{:else}
+										Private hook configured
+									{/if}
+								{:else}
+									Not required for public receive mode
+								{/if}
+							</p>
+						</div>
+						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+								Timeout
+							</p>
+							<p class="mt-2 text-sm">{currentToken.timeout}s</p>
+						</div>
+						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+								CORS
+							</p>
+							<p class="mt-2 text-sm">{currentToken.cors ? 'Enabled' : 'Disabled'}</p>
+						</div>
+						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4 sm:col-span-2">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+								Default body
+							</p>
+							<p class="mt-2 line-clamp-3 whitespace-pre-wrap text-sm">
+								{currentToken.default_content || 'Empty response body'}
+							</p>
+						</div>
+					</div>
+				{/if}
+			</Card>
+
+			<Card class="space-y-5">
+				<div class="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+					<div>
+						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+							Webhook URL
+						</p>
+						<h2 class="mt-2 text-2xl font-semibold">Primary endpoint</h2>
+					</div>
+					<Badge>{currentToken.receive_mode} receive</Badge>
+				</div>
+
+				<div class="rounded-lg bg-[rgb(15,25,29)] px-5 py-5 text-white">
+					<p class="text-xs font-semibold uppercase tracking-[0.05em] text-white/55">
+						Endpoint
+					</p>
+					<p class="mt-3 break-all font-mono text-sm leading-7 sm:text-base">{webhookUrl}</p>
+					<p class="mt-3 text-sm text-white/60">
+						Any additional path after the UUID is preserved in captured requests.
+					</p>
+				</div>
+
+				<div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+					<Button type="button" onclick={copyWebhookURL} class="w-full sm:w-auto">Copy webhook URL</Button>
+					<Button href={webhookUrl} target="_blank" variant="outline" class="w-full sm:w-auto">Open endpoint anyway</Button>
+					{#if webhookCopyState === 'done'}
+						<p class="text-sm text-[var(--accent-strong)]">Copied to clipboard.</p>
+					{:else if webhookCopyState === 'error'}
+						<p class="text-sm text-amber-700">Clipboard access failed.</p>
+					{/if}
+				</div>
+			</Card>
+		</div>
+
+		<div class="grid gap-8 lg:grid-cols-[0.84fr_1.16fr]">
 		<aside id="requests" class="space-y-5">
 			<Card class="space-y-5">
 				<div class="flex flex-col items-start justify-between gap-3 sm:flex-row">
@@ -802,9 +958,6 @@
 		</aside>
 
 			<section class="space-y-6">
-				<div class="space-y-4">
-					<Badge>Webhook endpoint</Badge>
-			</div>
 
 			{#if selectedRequest}
 				<Card class="space-y-5">
@@ -962,138 +1115,8 @@
 					</p>
 				</Card>
 			{/if}
-
-			<Card class="space-y-5">
-				<div class="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-start">
-					<div>
-						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
-							Token details
-						</p>
-						<h2 class="mt-2 text-2xl font-semibold">Current configuration</h2>
-					</div>
-					<div class="flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-						<Badge tone="muted" class="self-start">{currentToken.view_mode} view</Badge>
-						<Button type="button" size="sm" variant="secondary" onclick={openTokenSettingsModal} class="w-full sm:w-auto">
-							Edit settings
-						</Button>
-						<Button type="button" size="sm" variant="outline" onclick={openAccessSettingsModal} class="w-full sm:w-auto">
-							Access
-						</Button>
-					</div>
-				</div>
-
-				<div class="grid gap-3 sm:grid-cols-2">
-					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
-						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
-							Token UUID
-						</p>
-						<p class="mt-2 break-all font-mono text-sm">{currentToken.uuid}</p>
-					</div>
-					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
-						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
-							Expires
-						</p>
-						<p class="mt-2 text-sm">{expiresAtLabel}</p>
-					</div>
-					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
-						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
-							Created
-						</p>
-						<p class="mt-2 text-sm">{createdAtLabel}</p>
-					</div>
-					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
-						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
-							Default response
-						</p>
-						<p class="mt-2 text-sm">
-							{currentToken.default_status} {currentToken.default_content_type}
-						</p>
-					</div>
-					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
-						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
-							Receive mode
-						</p>
-						<p class="mt-2 text-sm">{currentToken.receive_mode}</p>
-					</div>
-					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
-						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
-							View mode
-						</p>
-						<p class="mt-2 text-sm">{currentToken.view_mode}</p>
-					</div>
-					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4 sm:col-span-2">
-						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
-							Receive secret
-						</p>
-						<p class="mt-2 text-sm">
-							{#if currentToken.receive_mode === 'private'}
-								{#if latestReceiveSecret}
-									Available in access settings modal
-								{:else if receiveSecretPrefix}
-									Stored with prefix `{receiveSecretPrefix}`. Rotate to reveal a new secret.
-								{:else}
-									Private hook configured
-								{/if}
-							{:else}
-								Not required for public receive mode
-							{/if}
-						</p>
-					</div>
-					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
-						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
-							Timeout
-						</p>
-						<p class="mt-2 text-sm">{currentToken.timeout}s</p>
-					</div>
-					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
-						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
-							CORS
-						</p>
-						<p class="mt-2 text-sm">{currentToken.cors ? 'Enabled' : 'Disabled'}</p>
-					</div>
-					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4 sm:col-span-2">
-						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
-							Default body
-						</p>
-						<p class="mt-2 line-clamp-3 whitespace-pre-wrap text-sm">
-							{currentToken.default_content || 'Empty response body'}
-						</p>
-					</div>
-				</div>
-			</Card>
-
-			<Card class="space-y-5">
-				<div class="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-					<div>
-						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
-							Webhook URL
-						</p>
-						<h2 class="mt-2 text-2xl font-semibold">Primary endpoint</h2>
-					</div>
-					<Badge>{currentToken.receive_mode} receive</Badge>
-				</div>
-
-				<div class="rounded-lg bg-[rgb(15,25,29)] px-5 py-5 text-white">
-					<p class="text-xs font-semibold uppercase tracking-[0.05em] text-white/55">
-						Endpoint
-					</p>
-					<p class="mt-3 break-all font-mono text-sm leading-7 sm:text-base">{webhookUrl}</p>
-					<p class="mt-3 text-sm text-white/60">
-						Any additional path after the UUID is preserved in captured requests.
-					</p>
-				</div>
-
-				<div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-					<Button type="button" onclick={copyWebhookURL} class="w-full sm:w-auto">Copy webhook URL</Button>
-					<Button href={webhookUrl} target="_blank" variant="outline" class="w-full sm:w-auto">Open endpoint anyway</Button>
-					{#if webhookCopyState === 'done'}
-						<p class="text-sm text-[var(--accent-strong)]">Copied to clipboard.</p>
-					{:else if webhookCopyState === 'error'}
-						<p class="text-sm text-amber-700">Clipboard access failed.</p>
-					{/if}
-				</div>
-			</Card>
 		</section>
+		</div>
 	</main>
 </div>
 
