@@ -804,13 +804,6 @@
 			<section class="space-y-6">
 				<div class="space-y-4">
 					<Badge>Webhook endpoint</Badge>
-					<h1 class="max-w-3xl text-4xl font-bold leading-tight tracking-tight text-balance sm:text-5xl lg:text-6xl">
-						Inspect the selected request without leaving the token page.
-					</h1>
-					<p class="max-w-2xl text-base leading-7 text-[var(--muted-foreground)] sm:text-lg sm:leading-8">
-						The request sidebar now drives a full detail pane. Headers, query params, form data,
-						and raw body are all visible next to the webhook URL and token metadata.
-					</p>
 			</div>
 
 			{#if selectedRequest}
