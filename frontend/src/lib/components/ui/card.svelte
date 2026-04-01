@@ -16,7 +16,7 @@
 <section
 	{id}
 	class={cn(
-		'rounded-[calc(var(--radius)+10px)] border border-black/8 bg-white/72 p-6 shadow-[0_20px_60px_rgba(20,20,20,0.08)] backdrop-blur-xl',
+		'rounded-lg border border-[var(--border)] bg-[var(--card)] p-6',
 		className
 	)}
 >

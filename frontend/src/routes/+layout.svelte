@@ -70,15 +70,15 @@
 
 <div class="min-h-screen">
 	{#if auth.authEnabled && auth.loaded}
-		<nav class="sticky top-0 z-40 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--background)_85%,transparent)] backdrop-blur-md">
+		<nav class="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--background)]">
 			<div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-10">
 				<a href="/" class="flex items-center gap-2.5">
 					<div
-						class="flex h-9 w-9 items-center justify-center rounded-full border border-black/10 bg-white/80 text-xs font-semibold shadow-sm"
+						class="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--card)] text-xs font-semibold"
 					>
 						HW
 					</div>
-					<span class="text-sm font-semibold uppercase tracking-[0.2em] text-[var(--muted-foreground)]">
+					<span class="text-sm font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 						HookWatch
 					</span>
 				</a>
@@ -92,10 +92,10 @@
 						<div class="relative">
 							<button
 								type="button"
-								class="flex h-9 items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 text-sm transition hover:bg-white/90"
+								class="flex h-9 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] px-3 text-sm transition hover:bg-[var(--accent-soft)]"
 								onclick={toggleUserMenu}
 							>
-								<span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent-soft)] text-xs font-semibold text-[var(--accent-strong)]">
+								<span class="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[var(--accent-soft)] text-xs font-semibold text-[var(--accent-strong)]">
 									{auth.user?.display_name?.[0]?.toUpperCase() ?? '?'}
 								</span>
 								<span class="hidden max-w-[10rem] truncate sm:inline">{auth.user?.display_name ?? auth.user?.email}</span>
@@ -107,7 +107,7 @@
 							{#if userMenuOpen}
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
 								<div class="fixed inset-0 z-40" onclick={closeUserMenu} onkeydown={closeUserMenu}></div>
-								<div class="absolute right-0 z-50 mt-2 w-56 rounded-2xl border border-[var(--border)] bg-[rgba(244,239,228,0.97)] p-1.5 shadow-[0_16px_48px_rgba(0,0,0,0.16)] backdrop-blur-md">
+								<div class="absolute right-0 z-50 mt-2 w-56 rounded-lg border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-[0_4px_16px_rgba(0,0,0,0.12)]">
 									<div class="px-3 py-2.5">
 										<p class="text-sm font-medium">{auth.user?.display_name}</p>
 										<p class="mt-0.5 truncate text-xs text-[var(--muted-foreground)]">{auth.user?.email}</p>
@@ -118,7 +118,7 @@
 									<hr class="my-1 border-[var(--border)]" />
 									<button
 										type="button"
-										class="w-full rounded-xl px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-white/60"
+										class="w-full rounded-md px-3 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--accent-soft)]"
 										onclick={handleLogout}
 									>
 										Sign out
@@ -143,7 +143,7 @@
 		onclick={toggleTheme}
 	>
 		<span
-			class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent-strong)]"
+			class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[var(--accent-soft)] text-[var(--accent-strong)]"
 			aria-hidden="true"
 		>
 			{#if theme === 'dark'}

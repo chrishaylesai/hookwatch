@@ -677,7 +677,7 @@
 	<header class="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
 		<div class="flex items-center gap-3">
 			<div
-				class="flex h-11 w-11 items-center justify-center rounded-full border border-black/10 bg-white/80 text-sm font-semibold shadow-[0_8px_30px_rgba(0,0,0,0.08)]"
+				class="flex h-11 w-11 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--card)] text-sm font-semibold"
 			>
 				HW
 			</div>
@@ -697,7 +697,7 @@
 			<Card class="space-y-5">
 				<div class="flex flex-col items-start justify-between gap-3 sm:flex-row">
 					<div>
-						<p class="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted-foreground)]">
+						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 							Request list
 						</p>
 						<h2 class="mt-2 text-2xl font-semibold">Captured traffic</h2>
@@ -716,7 +716,7 @@
 				</div>
 
 				{#if pendingNewerRequests > 0}
-					<div class="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4">
+					<div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4">
 						<p class="text-sm leading-7 text-amber-900">
 							{pendingNewerRequests} newer {pendingNewerRequests === 1 ? 'request has' : 'requests have'} arrived on page 1.
 							<a
@@ -735,10 +735,10 @@
 							<a
 								href={requestListHref(requestList.page, request.uuid)}
 								onclick={(event) => handleRequestClick(event, request)}
-								class={`block rounded-[24px] border px-4 py-4 transition duration-200 ease-out ${
+								class={`block rounded-lg border px-4 py-4 transition duration-200 ease-out ${
 									isSelectedRequest(request.uuid)
-										? 'border-[var(--accent-strong)] bg-[var(--accent-soft)] shadow-[0_16px_40px_rgba(31,122,106,0.12)]'
-										: 'border-black/8 bg-white/68 hover:-translate-y-0.5 hover:bg-white'
+										? 'border-[var(--accent-strong)] bg-[var(--accent-soft)]'
+										: 'border-[var(--border)] bg-[var(--card)] hover:bg-[var(--accent-soft)]'
 								}`}
 							>
 								<div class="flex items-start justify-between gap-3">
@@ -746,12 +746,12 @@
 										<p class="truncate font-mono text-sm text-[var(--foreground)]">
 											{requestPath(request)}
 										</p>
-										<p class="mt-2 text-xs uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+										<p class="mt-2 text-xs uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 											{request.hostname}
 										</p>
 									</div>
 									<span
-										class={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em] ${methodBadgeClass(request.method)}`}
+										class={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.05em] ${methodBadgeClass(request.method)}`}
 									>
 										{request.method}
 									</span>
@@ -767,7 +767,7 @@
 						{/each}
 					</div>
 				{:else}
-					<div class="rounded-[28px] border border-dashed border-black/12 bg-black/[0.02] px-5 py-6">
+					<div class="rounded-lg border border-dashed border-[var(--border)] bg-black/[0.02] px-5 py-6">
 						<p class="text-sm leading-7 text-[var(--muted-foreground)]">
 							No requests have been captured for this token yet. Send a request to the webhook
 							URL and it will appear here.
@@ -775,7 +775,7 @@
 					</div>
 				{/if}
 
-				<div class="flex flex-col gap-3 border-t border-black/8 pt-2 sm:flex-row sm:items-center sm:justify-between">
+				<div class="flex flex-col gap-3 border-t border-[var(--border)] pt-2 sm:flex-row sm:items-center sm:justify-between">
 					<Button
 						href={requestListHref(Math.max(1, requestList.page - 1))}
 						variant="ghost"
@@ -804,7 +804,7 @@
 			<section class="space-y-6">
 				<div class="space-y-4">
 					<Badge>Webhook endpoint</Badge>
-					<h1 class="max-w-3xl font-[family-name:var(--font-serif)] text-4xl leading-none tracking-[-0.04em] text-balance sm:text-5xl lg:text-6xl">
+					<h1 class="max-w-3xl text-4xl font-bold leading-tight tracking-tight text-balance sm:text-5xl lg:text-6xl">
 						Inspect the selected request without leaving the token page.
 					</h1>
 					<p class="max-w-2xl text-base leading-7 text-[var(--muted-foreground)] sm:text-lg sm:leading-8">
@@ -817,7 +817,7 @@
 				<Card class="space-y-5">
 					<div class="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
 						<div>
-							<p class="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted-foreground)]">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 								Request detail
 							</p>
 							<h2 class="mt-2 text-2xl font-semibold">Payload breakdown</h2>
@@ -825,10 +825,10 @@
 						<Badge>{selectedRequest.method}</Badge>
 					</div>
 
-					<div class="rounded-[24px] border border-black/8 bg-[var(--accent-soft)] px-4 py-4">
+					<div class="rounded-lg border border-[var(--border)] bg-[var(--accent-soft)] px-4 py-4">
 						<div class="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
 							<div>
-								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+								<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 									Copy as cURL
 								</p>
 								<p class="mt-2 text-sm text-[var(--foreground)]">
@@ -839,7 +839,7 @@
 							<Button type="button" onclick={copyCurlCommand} size="sm" class="w-full sm:w-auto">Copy cURL</Button>
 						</div>
 
-						<div class="mt-4 rounded-[18px] bg-white/72 px-4 py-4">
+						<div class="mt-4 rounded-md bg-[var(--card)] px-4 py-4">
 							<pre class="overflow-x-auto font-mono text-sm leading-6 whitespace-pre-wrap break-words">{curlCommand}</pre>
 						</div>
 
@@ -851,26 +851,26 @@
 					</div>
 
 					<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-						<div class="rounded-[24px] border border-black/8 bg-white/70 px-4 py-4">
-							<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 								Received
 							</p>
 							<p class="mt-2 text-sm">{formatTimestamp(selectedRequest.created_at)}</p>
 						</div>
-						<div class="rounded-[24px] border border-black/8 bg-white/70 px-4 py-4">
-							<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 								IP address
 							</p>
 							<p class="mt-2 font-mono text-sm">{selectedRequest.ip}</p>
 						</div>
-						<div class="rounded-[24px] border border-black/8 bg-white/70 px-4 py-4">
-							<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 								Host
 							</p>
 							<p class="mt-2 text-sm">{selectedRequest.hostname}</p>
 						</div>
-						<div class="rounded-[24px] border border-black/8 bg-white/70 px-4 py-4">
-							<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 								User agent
 							</p>
 							<p class="mt-2 line-clamp-2 text-sm">{selectedRequest.user_agent}</p>
@@ -878,9 +878,9 @@
 					</div>
 
 					<div class="grid gap-5 xl:grid-cols-2">
-						<Card class="space-y-4 border-black/6 bg-[rgba(255,255,255,0.55)] p-5 shadow-none">
+						<Card class="space-y-4 border-[var(--border)] bg-[var(--card)] p-5 shadow-none">
 							<div>
-								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+								<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 									Headers
 								</p>
 								<h3 class="mt-2 text-lg font-semibold">Request headers</h3>
@@ -889,7 +889,7 @@
 							{#if objectEntries(selectedRequest.headers).length > 0}
 								<div class="space-y-3">
 									{#each objectEntries(selectedRequest.headers) as entry}
-										<div class="rounded-[18px] border border-black/8 bg-white/72 px-4 py-3">
+										<div class="rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3">
 											<p class="font-mono text-xs text-[var(--muted-foreground)]">{entry.key}</p>
 											<p class="mt-2 break-words text-sm">{entry.value}</p>
 										</div>
@@ -900,9 +900,9 @@
 							{/if}
 						</Card>
 
-						<Card class="space-y-4 border-black/6 bg-[rgba(255,255,255,0.55)] p-5 shadow-none">
+						<Card class="space-y-4 border-[var(--border)] bg-[var(--card)] p-5 shadow-none">
 							<div>
-								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+								<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 									Query params
 								</p>
 								<h3 class="mt-2 text-lg font-semibold">Parsed from request URL</h3>
@@ -911,7 +911,7 @@
 							{#if queryEntries(selectedRequest.query).length > 0}
 								<div class="space-y-3">
 									{#each queryEntries(selectedRequest.query) as entry}
-										<div class="rounded-[18px] border border-black/8 bg-white/72 px-4 py-3">
+										<div class="rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3">
 											<p class="font-mono text-xs text-[var(--muted-foreground)]">{entry.key}</p>
 											<p class="mt-2 break-words text-sm">{entry.value}</p>
 										</div>
@@ -922,9 +922,9 @@
 							{/if}
 						</Card>
 
-						<Card class="space-y-4 border-black/6 bg-[rgba(255,255,255,0.55)] p-5 shadow-none">
+						<Card class="space-y-4 border-[var(--border)] bg-[var(--card)] p-5 shadow-none">
 							<div>
-								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+								<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 									Form data
 								</p>
 								<h3 class="mt-2 text-lg font-semibold">Parsed key-value fields</h3>
@@ -933,7 +933,7 @@
 							{#if objectEntries(selectedRequest.form_data).length > 0}
 								<div class="space-y-3">
 									{#each objectEntries(selectedRequest.form_data) as entry}
-										<div class="rounded-[18px] border border-black/8 bg-white/72 px-4 py-3">
+										<div class="rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3">
 											<p class="font-mono text-xs text-[var(--muted-foreground)]">{entry.key}</p>
 											<p class="mt-2 break-words text-sm">{entry.value}</p>
 										</div>
@@ -944,9 +944,9 @@
 							{/if}
 						</Card>
 
-						<Card class="space-y-4 border-black/6 bg-[rgba(15,25,29,0.95)] p-5 text-white shadow-none">
+						<Card class="space-y-4 border-black/6 bg-[rgb(15,25,29)] p-5 text-white shadow-none">
 							<div>
-								<p class="text-xs font-semibold uppercase tracking-[0.18em] text-white/60">
+								<p class="text-xs font-semibold uppercase tracking-[0.05em] text-white/60">
 									Raw body
 								</p>
 								<h3 class="mt-2 text-lg font-semibold">Highlighted request content</h3>
@@ -973,7 +973,7 @@
 			<Card class="space-y-5">
 				<div class="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-start">
 					<div>
-						<p class="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted-foreground)]">
+						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 							Token details
 						</p>
 						<h2 class="mt-2 text-2xl font-semibold">Current configuration</h2>
@@ -990,46 +990,46 @@
 				</div>
 
 				<div class="grid gap-3 sm:grid-cols-2">
-					<div class="rounded-[24px] border border-black/8 bg-white/70 px-4 py-4">
-						<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 							Token UUID
 						</p>
 						<p class="mt-2 break-all font-mono text-sm">{currentToken.uuid}</p>
 					</div>
-					<div class="rounded-[24px] border border-black/8 bg-white/70 px-4 py-4">
-						<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 							Expires
 						</p>
 						<p class="mt-2 text-sm">{expiresAtLabel}</p>
 					</div>
-					<div class="rounded-[24px] border border-black/8 bg-white/70 px-4 py-4">
-						<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 							Created
 						</p>
 						<p class="mt-2 text-sm">{createdAtLabel}</p>
 					</div>
-					<div class="rounded-[24px] border border-black/8 bg-white/70 px-4 py-4">
-						<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 							Default response
 						</p>
 						<p class="mt-2 text-sm">
 							{currentToken.default_status} {currentToken.default_content_type}
 						</p>
 					</div>
-					<div class="rounded-[24px] border border-black/8 bg-white/70 px-4 py-4">
-						<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 							Receive mode
 						</p>
 						<p class="mt-2 text-sm">{currentToken.receive_mode}</p>
 					</div>
-					<div class="rounded-[24px] border border-black/8 bg-white/70 px-4 py-4">
-						<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 							View mode
 						</p>
 						<p class="mt-2 text-sm">{currentToken.view_mode}</p>
 					</div>
-					<div class="rounded-[24px] border border-black/8 bg-white/70 px-4 py-4 sm:col-span-2">
-						<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4 sm:col-span-2">
+						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 							Receive secret
 						</p>
 						<p class="mt-2 text-sm">
@@ -1046,20 +1046,20 @@
 							{/if}
 						</p>
 					</div>
-					<div class="rounded-[24px] border border-black/8 bg-white/70 px-4 py-4">
-						<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 							Timeout
 						</p>
 						<p class="mt-2 text-sm">{currentToken.timeout}s</p>
 					</div>
-					<div class="rounded-[24px] border border-black/8 bg-white/70 px-4 py-4">
-						<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 							CORS
 						</p>
 						<p class="mt-2 text-sm">{currentToken.cors ? 'Enabled' : 'Disabled'}</p>
 					</div>
-					<div class="rounded-[24px] border border-black/8 bg-white/70 px-4 py-4 sm:col-span-2">
-						<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4 sm:col-span-2">
+						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 							Default body
 						</p>
 						<p class="mt-2 line-clamp-3 whitespace-pre-wrap text-sm">
@@ -1072,7 +1072,7 @@
 			<Card class="space-y-5">
 				<div class="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
 					<div>
-						<p class="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted-foreground)]">
+						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 							Webhook URL
 						</p>
 						<h2 class="mt-2 text-2xl font-semibold">Primary endpoint</h2>
@@ -1080,8 +1080,8 @@
 					<Badge>{currentToken.receive_mode} receive</Badge>
 				</div>
 
-				<div class="rounded-[28px] bg-[rgba(15,25,29,0.95)] px-5 py-5 text-white">
-					<p class="text-xs font-semibold uppercase tracking-[0.2em] text-white/55">
+				<div class="rounded-lg bg-[rgb(15,25,29)] px-5 py-5 text-white">
+					<p class="text-xs font-semibold uppercase tracking-[0.05em] text-white/55">
 						Endpoint
 					</p>
 					<p class="mt-3 break-all font-mono text-sm leading-7 sm:text-base">{webhookUrl}</p>
@@ -1113,11 +1113,11 @@
 	<form class="space-y-5" onsubmit={saveTokenSettings}>
 		<div class="grid gap-4 sm:grid-cols-2">
 			<label class="space-y-2">
-				<span class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+				<span class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 					Status code
 				</span>
 				<input
-					class="w-full rounded-[18px] border border-black/10 bg-white/80 px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
+					class="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
 					type="number"
 					min="100"
 					max="999"
@@ -1126,32 +1126,32 @@
 			</label>
 
 			<label class="space-y-2">
-				<span class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+				<span class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 					Content type
 				</span>
 				<input
-					class="w-full rounded-[18px] border border-black/10 bg-white/80 px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
+					class="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
 					type="text"
 					bind:value={tokenSettingsDraft.defaultContentType}
 				/>
 			</label>
 
 			<label class="space-y-2 sm:col-span-2">
-				<span class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+				<span class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 					Default body
 				</span>
 				<textarea
-					class="min-h-36 w-full rounded-[18px] border border-black/10 bg-white/80 px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
+					class="min-h-36 w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
 					bind:value={tokenSettingsDraft.defaultContent}
 				></textarea>
 			</label>
 
 			<label class="space-y-2">
-				<span class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+				<span class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 					Timeout
 				</span>
 				<input
-					class="w-full rounded-[18px] border border-black/10 bg-white/80 px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
+					class="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
 					type="number"
 					min="0"
 					max="10"
@@ -1160,7 +1160,7 @@
 				<p class="text-xs text-[var(--muted-foreground)]">Seconds, from `0` to `10`.</p>
 			</label>
 
-			<label class="flex items-center gap-3 self-end rounded-[18px] border border-black/10 bg-white/70 px-4 py-3">
+			<label class="flex items-center gap-3 self-end rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3">
 				<input type="checkbox" bind:checked={tokenSettingsDraft.cors} />
 				<span class="text-sm">Enable CORS headers on the default response</span>
 			</label>
@@ -1168,7 +1168,7 @@
 
 		{#if tokenSettingsError}
 			<div
-				class="rounded-[20px] border border-red-300/60 bg-red-50 px-4 py-3 text-sm text-red-800"
+				class="rounded-lg border border-red-300/60 bg-red-50 px-4 py-3 text-sm text-red-800"
 				role="alert"
 			>
 				{tokenSettingsError}
@@ -1195,11 +1195,11 @@
 	<form class="space-y-5" onsubmit={saveAccessSettings}>
 		<div class="grid gap-4 sm:grid-cols-2">
 			<label class="space-y-2">
-				<span class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+				<span class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 					Receive mode
 				</span>
 				<select
-					class="w-full rounded-[18px] border border-black/10 bg-white/80 px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
+					class="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
 					bind:value={accessSettingsDraft.receiveMode}
 				>
 					<option value="public">Public</option>
@@ -1211,11 +1211,11 @@
 			</label>
 
 			<label class="space-y-2">
-				<span class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+				<span class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 					View mode
 				</span>
 				<select
-					class="w-full rounded-[18px] border border-black/10 bg-white/80 px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
+					class="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
 					bind:value={accessSettingsDraft.viewMode}
 				>
 					<option value="public">Public</option>
@@ -1227,10 +1227,10 @@
 			</label>
 		</div>
 
-		<div class="rounded-[24px] border border-black/8 bg-white/72 px-4 py-4">
+		<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
 			<div class="flex flex-wrap items-start justify-between gap-3">
 				<div>
-					<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+					<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 						Receive secret
 					</p>
 					<p class="mt-2 text-sm leading-7 text-[var(--foreground)]">
@@ -1256,8 +1256,8 @@
 			</div>
 
 			<div class="mt-4 space-y-3">
-				<div class="rounded-[18px] bg-[rgba(15,25,29,0.95)] px-4 py-4 text-white">
-					<p class="text-xs font-semibold uppercase tracking-[0.18em] text-white/55">
+				<div class="rounded-md bg-[rgb(15,25,29)] px-4 py-4 text-white">
+					<p class="text-xs font-semibold uppercase tracking-[0.05em] text-white/55">
 						Current secret
 					</p>
 					{#if accessSettingsDraft.receiveMode !== 'private'}
@@ -1295,10 +1295,10 @@
 		</div>
 
 		{#if auth.authEnabled}
-			<div class="rounded-[24px] border border-black/8 bg-white/72 px-4 py-4">
+			<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
 				<div class="flex flex-wrap items-start justify-between gap-3">
 					<div>
-						<p class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+						<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 							Sharing
 						</p>
 						<p class="mt-2 text-sm leading-7 text-[var(--foreground)]">
@@ -1310,13 +1310,13 @@
 				<div class="mt-4 space-y-3">
 					<div class="flex flex-col gap-2 sm:flex-row">
 						<input
-							class="flex-1 rounded-[18px] border border-black/10 bg-white/80 px-4 py-2.5 text-sm outline-none transition focus:border-[var(--accent-strong)]"
+							class="flex-1 rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-2.5 text-sm outline-none transition focus:border-[var(--accent-strong)]"
 							type="email"
 							placeholder="User email"
 							bind:value={grantEmail}
 						/>
 						<select
-							class="rounded-[18px] border border-black/10 bg-white/80 px-3 py-2.5 text-sm outline-none"
+							class="rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm outline-none"
 							bind:value={grantRole}
 						>
 							<option value="viewer">Viewer</option>
@@ -1336,7 +1336,7 @@
 					{:else if grants.length > 0}
 						<div class="space-y-2">
 							{#each grants as grant}
-								<div class="flex items-center justify-between rounded-[18px] border border-black/8 bg-white/60 px-4 py-2.5">
+								<div class="flex items-center justify-between rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-2.5">
 									<div class="min-w-0 flex-1">
 										<p class="truncate text-sm">{grant.user_id}</p>
 										<p class="text-xs capitalize text-[var(--muted-foreground)]">{grant.role}</p>
@@ -1360,7 +1360,7 @@
 
 		{#if accessSettingsError}
 			<div
-				class="rounded-[20px] border border-red-300/60 bg-red-50 px-4 py-3 text-sm text-red-800"
+				class="rounded-lg border border-red-300/60 bg-red-50 px-4 py-3 text-sm text-red-800"
 				role="alert"
 			>
 				{accessSettingsError}

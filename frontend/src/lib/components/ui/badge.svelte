@@ -7,7 +7,7 @@
 	const toneClasses: Record<Tone, string> = {
 		accent: 'bg-[var(--accent-soft)] text-[var(--accent-strong)]',
 		muted: 'bg-black/6 text-[var(--muted-foreground)]',
-		outline: 'border border-white/30 bg-white/8 text-[var(--foreground)]'
+		outline: 'border border-[var(--border)] bg-transparent text-[var(--foreground)]'
 	};
 
 	let {
@@ -23,7 +23,7 @@
 
 <span
 	class={cn(
-		'inline-flex items-center gap-2 rounded-full px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.22em]',
+		'inline-flex items-center gap-2 rounded-md px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.05em]',
 		toneClasses[tone],
 		className
 	)}

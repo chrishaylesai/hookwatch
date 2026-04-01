@@ -39,7 +39,7 @@
 	>
 		<div
 			class={cn(
-				'max-h-[calc(100vh-1.5rem)] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-black/10 bg-[rgba(244,239,228,0.96)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.24)] sm:max-h-[calc(100vh-4rem)] sm:rounded-[32px] sm:p-6',
+				'max-h-[calc(100vh-1.5rem)] w-full max-w-2xl overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--background)] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.16)] sm:max-h-[calc(100vh-4rem)] sm:rounded-xl sm:p-6',
 				className
 			)}
 			role="dialog"
@@ -51,7 +51,7 @@
 		>
 			<div class="flex items-start justify-between gap-4">
 				<div>
-					<p class="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted-foreground)]">
+					<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 						Token settings
 					</p>
 					<h2 class="mt-2 text-xl font-semibold sm:text-2xl">{title}</h2>
@@ -63,7 +63,7 @@
 				</div>
 
 				<button
-					class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-white/70 text-lg text-[var(--muted-foreground)] transition hover:bg-white hover:text-[var(--foreground)]"
+					class="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--card)] text-lg text-[var(--muted-foreground)] transition hover:bg-[var(--accent-soft)] hover:text-[var(--foreground)]"
 					type="button"
 					aria-label="Close modal"
 					onclick={handleBackdropClick}
