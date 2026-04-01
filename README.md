@@ -55,7 +55,7 @@ docker compose down -v
 
 Requirements:
 
-- Go 1.23+
+- Go 1.25+
 - Node.js 22+
 - npm
 
