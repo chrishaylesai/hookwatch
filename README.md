@@ -1,0 +1,164 @@
+# HookWatch
+
+Local run instructions for the `hookwatch` app.
+
+## What It Runs
+
+HookWatch is a single Go server that serves:
+
+- the JSON API under `/api`
+- the webhook capture endpoints under `/{tokenId}`
+- the Svelte frontend from an embedded static build
+
+The simplest local workflow is Docker Compose. A direct host run is also available if you have Go and Node installed.
+
+## Run With Docker Compose
+
+Requirements:
+
+- Docker
+- Docker Compose
+
+From the repo root:
+
+```bash
+cd hookwatch
+docker compose up --build
+```
+
+Then open:
+
+```text
+http://localhost:8080
+```
+
+What this does:
+
+- builds the frontend
+- builds the Go binary
+- starts the app on port `8080`
+- persists SQLite data in the named Docker volume `hookwatch-data`
+
+To stop it:
+
+```bash
+docker compose down
+```
+
+To stop it and remove the local database volume:
+
+```bash
+docker compose down -v
+```
+
+## Run Directly On Your Machine
+
+Requirements:
+
+- Go 1.23+
+- Node.js 22+
+- npm
+
+From the repo root:
+
+```bash
+cd hookwatch/frontend
+npm ci
+npm run build
+```
+
+Then, in another shell:
+
+```bash
+cd hookwatch
+go run ./cmd/hookwatch --port 8080 --data-dir ./data --auth-mode=none
+```
+
+Open:
+
+```text
+http://localhost:8080
+```
+
+Notes:
+
+- The Go binary embeds files from `frontend/build`, so build the frontend before `go run` or `go build`.
+- SQLite data is stored in `./data` by default.
+
+## Useful Configuration
+
+The binary accepts either flags or environment variables.
+
+Common flags:
+
+```bash
+--port 8080
+--data-dir ./data
+--auth-mode none
+--allow-registration=false
+--token-ttl 168h
+--max-requests 500
+--token-cleanup-interval 1h
+```
+
+Equivalent environment variables:
+
+```bash
+HOOKWATCH_PORT=8080
+HOOKWATCH_DATA_DIR=./data
+HOOKWATCH_AUTH_MODE=none
+HOOKWATCH_ALLOW_REGISTRATION=false
+HOOKWATCH_TOKEN_TTL=168h
+HOOKWATCH_MAX_REQUESTS=500
+HOOKWATCH_TOKEN_CLEANUP_INTERVAL=1h
+```
+
+Defaults:
+
+- port: `8080`
+- data dir: `./data`
+- auth mode: `none`
+- token TTL: `168h` (7 days)
+- max captured requests per token: `500`
+- expired token cleanup interval: `1h`
+
+## Auth Modes For Local Use
+
+For quick local testing, use:
+
+```bash
+--auth-mode=none
+```
+
+If you want accounts locally, use:
+
+```bash
+--auth-mode=local
+```
+
+Optional:
+
+```bash
+--allow-registration=true
+```
+
+Behavior in `local` mode:
+
+- the first registered user is automatically made admin
+- the first user can register even if `--allow-registration=false`
+- later registrations require `--allow-registration=true`
+
+## Quick Smoke Test
+
+1. Start the app.
+2. Open `http://localhost:8080`.
+3. Create a webhook from the home page.
+4. Send a request to the generated URL:
+
+```bash
+curl -X POST http://localhost:8080/<token-id> \
+  -H 'Content-Type: application/json' \
+  -d '{"hello":"world"}'
+```
+
+You should see the request appear in the UI for that token.
