@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -39,7 +40,10 @@ type tokenPayload struct {
 	LegacyCORSEnabled  *bool   `json:"cors_enabled"`
 	ReceiveMode        *string `json:"receive_mode"`
 	ViewMode           *string `json:"view_mode"`
+	Persistent         *bool   `json:"persistent"`
 	RateLimit          *int    `json:"rate_limit"`
+	SignatureProvider  *string `json:"signature_provider"`
+	SignatureSecret    *string `json:"signature_secret"`
 }
 
 type tokenResponse struct {
@@ -48,7 +52,10 @@ type tokenResponse struct {
 	ReceiveMode         string    `json:"receive_mode"`
 	ReceiveSecret       *string   `json:"receive_secret,omitempty"`
 	ViewMode            string    `json:"view_mode"`
+	Persistent          bool      `json:"persistent"`
 	ReceiveSecretPrefix *string   `json:"receive_secret_prefix,omitempty"`
+	SignatureProvider   string    `json:"signature_provider,omitempty"`
+	SignatureConfigured bool      `json:"signature_secret_configured"`
 	DefaultStatus       int       `json:"default_status"`
 	DefaultContentType  string    `json:"default_content_type"`
 	DefaultContent      string    `json:"default_content"`
@@ -93,6 +100,8 @@ func (h *tokenHandler) createToken(w http.ResponseWriter, r *http.Request) {
 		UUID:               uuid.NewString(),
 		ReceiveMode:        "public",
 		ViewMode:           "public",
+		Persistent:         false,
+		SignatureProvider:  "",
 		DefaultStatus:      http.StatusOK,
 		DefaultContent:     "",
 		DefaultContentType: "text/plain",
@@ -107,6 +116,10 @@ func (h *tokenHandler) createToken(w http.ResponseWriter, r *http.Request) {
 		token.OwnerID = &user.ID
 	}
 	if err := validateAndNormalizeTokenAccess(token, h.authMode); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.validateAdvancedTokenConfig(r.Context(), token, payload.Persistent != nil); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -217,6 +230,10 @@ func (h *tokenHandler) updateToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if err := h.validateAdvancedTokenConfig(r.Context(), token, payload.Persistent != nil); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err := validateTokenConfig(token); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -228,7 +245,11 @@ func (h *tokenHandler) updateToken(w http.ResponseWriter, r *http.Request) {
 	}
 	now := timeNow().UTC()
 	token.UpdatedAt = now
-	token.ExpiresAt = now.Add(store.DefaultTokenTTL)
+	if !token.Persistent {
+		token.ExpiresAt = now.Add(store.DefaultTokenTTL)
+	} else {
+		token.ExpiresAt = time.Time{}
+	}
 
 	if err := h.store.UpdateToken(r.Context(), token); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -311,7 +332,9 @@ func (h *tokenHandler) rotateReceiveSecret(w http.ResponseWriter, r *http.Reques
 
 	now := timeNow().UTC()
 	token.UpdatedAt = now
-	token.ExpiresAt = now.Add(store.DefaultTokenTTL)
+	if !token.Persistent {
+		token.ExpiresAt = now.Add(store.DefaultTokenTTL)
+	}
 	if err := h.store.UpdateToken(r.Context(), token); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "token not found")
@@ -357,8 +380,22 @@ func applyTokenPayload(token *models.Token, payload tokenPayload) {
 	if payload.ViewMode != nil {
 		token.ViewMode = *payload.ViewMode
 	}
+	if payload.Persistent != nil {
+		token.Persistent = *payload.Persistent
+	}
 	if payload.RateLimit != nil {
 		token.RateLimit = *payload.RateLimit
+	}
+	if payload.SignatureProvider != nil {
+		token.SignatureProvider = strings.TrimSpace(*payload.SignatureProvider)
+	}
+	if payload.SignatureSecret != nil {
+		secret := strings.TrimSpace(*payload.SignatureSecret)
+		if secret == "" {
+			token.SignatureSecret = nil
+		} else {
+			token.SignatureSecret = &secret
+		}
 	}
 }
 
@@ -420,7 +457,10 @@ func toTokenResponse(token *models.Token, receiveSecret *string) tokenResponse {
 		ReceiveMode:         token.ReceiveMode,
 		ReceiveSecret:       receiveSecret,
 		ViewMode:            token.ViewMode,
+		Persistent:          token.Persistent,
 		ReceiveSecretPrefix: token.ReceiveSecretPrefix,
+		SignatureProvider:   token.SignatureProvider,
+		SignatureConfigured: token.SignatureSecret != nil && strings.TrimSpace(*token.SignatureSecret) != "",
 		DefaultStatus:       token.DefaultStatus,
 		DefaultContentType:  token.DefaultContentType,
 		DefaultContent:      token.DefaultContent,
@@ -447,6 +487,37 @@ func validateTokenConfig(token *models.Token) error {
 	if token.Timeout < 0 || token.Timeout > maxResponseTimeoutSeconds {
 		return errors.New("timeout must be between 0 and 10")
 	}
+	return nil
+}
+
+func (h *tokenHandler) validateAdvancedTokenConfig(ctx context.Context, token *models.Token, persistenceChanged bool) error {
+	token.SignatureProvider = strings.ToLower(strings.TrimSpace(token.SignatureProvider))
+
+	switch token.SignatureProvider {
+	case "", "github", "stripe":
+	default:
+		return errors.New("signature_provider must be empty, github, or stripe")
+	}
+
+	if token.SignatureProvider == "" {
+		token.SignatureSecret = nil
+	} else if token.SignatureSecret == nil || strings.TrimSpace(*token.SignatureSecret) == "" {
+		return errors.New("signature_secret is required when signature_provider is set")
+	}
+
+	if token.Persistent {
+		if h.authMode == authModeNone {
+			return errors.New("persistent tokens require authentication")
+		}
+		if token.OwnerID == nil {
+			return errors.New("persistent tokens require an authenticated owner")
+		}
+	}
+
+	if persistenceChanged && !authz.IsOwner(ctx, token) && !authz.IsAdmin(ctx) {
+		return errors.New("only the owner or an admin can change persistence")
+	}
+
 	return nil
 }
 

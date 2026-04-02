@@ -3,8 +3,11 @@ export type TokenResponse = {
 	owner_id?: string;
 	receive_mode: string;
 	view_mode: string;
+	persistent: boolean;
 	receive_secret?: string;
 	receive_secret_prefix?: string;
+	signature_provider?: string;
+	signature_secret_configured: boolean;
 	default_status: number;
 	default_content_type: string;
 	default_content: string;
@@ -30,7 +33,14 @@ export type RequestResponse = {
 	form_data: Record<string, unknown>;
 	url: string;
 	size: number;
+	signature_validation: SignatureValidation;
 	created_at: string;
+};
+
+export type SignatureValidation = {
+	status: 'unknown' | 'valid' | 'invalid';
+	provider?: string;
+	error?: string;
 };
 
 export type RequestListResponse = {
@@ -136,4 +146,27 @@ export type ActionListResponse = {
 
 export type ActionCompletedEvent = {
 	action_log: ActionLog;
+};
+
+export type ReplayResponse = {
+	status: number;
+	headers: Record<string, string>;
+	body: string;
+	duration_ms: number;
+	url: string;
+};
+
+export type RequestDiffSection = {
+	key: string;
+	label: string;
+	format: 'text' | 'json';
+	left: string;
+	right: string;
+	changed: boolean;
+};
+
+export type RequestDiffResponse = {
+	left_request_id: string;
+	right_request_id: string;
+	sections: RequestDiffSection[];
 };

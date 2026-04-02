@@ -140,14 +140,18 @@ func (s *Store) migrate() error {
 			owner_id TEXT REFERENCES users(id) ON DELETE SET NULL,
 			receive_mode TEXT NOT NULL DEFAULT 'public',
 			view_mode TEXT NOT NULL DEFAULT 'public',
+			persistent INTEGER NOT NULL DEFAULT 0,
 			receive_secret_hash TEXT,
 			receive_secret_prefix TEXT,
+			signature_provider TEXT NOT NULL DEFAULT '',
+			signature_secret TEXT,
 			default_status INTEGER NOT NULL DEFAULT 200,
 			default_content TEXT NOT NULL DEFAULT '',
 			default_content_type TEXT NOT NULL DEFAULT 'text/plain',
 			max_requests INTEGER NOT NULL DEFAULT 500,
 			timeout INTEGER NOT NULL DEFAULT 0,
 			cors INTEGER NOT NULL DEFAULT 0,
+			rate_limit INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL,
 			expires_at DATETIME
@@ -165,6 +169,10 @@ func (s *Store) migrate() error {
 			headers TEXT NOT NULL,
 			form_data TEXT NOT NULL,
 			url TEXT NOT NULL,
+			size INTEGER NOT NULL DEFAULT 0,
+			signature_status TEXT NOT NULL DEFAULT 'unknown',
+			signature_provider TEXT,
+			signature_error TEXT,
 			created_at DATETIME NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_requests_token_created ON requests(token_id, created_at DESC)`,
@@ -241,6 +249,27 @@ func (s *Store) migrate() error {
 	if err := ensureTokenRateLimitColumn(conn); err != nil {
 		return fmt.Errorf("ensure token rate_limit column: %w", err)
 	}
+	if err := ensureTokenPersistentColumn(conn); err != nil {
+		return fmt.Errorf("ensure token persistent column: %w", err)
+	}
+	if err := ensureTokenSignatureProviderColumn(conn); err != nil {
+		return fmt.Errorf("ensure token signature_provider column: %w", err)
+	}
+	if err := ensureTokenSignatureSecretColumn(conn); err != nil {
+		return fmt.Errorf("ensure token signature_secret column: %w", err)
+	}
+	if err := ensureRequestSignatureStatusColumn(conn); err != nil {
+		return fmt.Errorf("ensure request signature_status column: %w", err)
+	}
+	if err := ensureRequestSignatureProviderColumn(conn); err != nil {
+		return fmt.Errorf("ensure request signature_provider column: %w", err)
+	}
+	if err := ensureRequestSignatureErrorColumn(conn); err != nil {
+		return fmt.Errorf("ensure request signature_error column: %w", err)
+	}
+	if err := backfillRequestSignatureStatus(conn); err != nil {
+		return fmt.Errorf("backfill request signature_status: %w", err)
+	}
 
 	return nil
 }
@@ -256,18 +285,18 @@ func (s *Store) CreateToken(ctx context.Context, token *models.Token) error {
 	applyDefaultTokenDefaults(token, s.config)
 
 	query := `INSERT INTO tokens (
-		uuid, owner_id, receive_mode, view_mode, receive_secret_hash, receive_secret_prefix,
-		default_status, default_content, default_content_type, max_requests, timeout, cors,
-		created_at, updated_at, expires_at, rate_limit
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		uuid, owner_id, receive_mode, view_mode, persistent, receive_secret_hash, receive_secret_prefix,
+		signature_provider, signature_secret, default_status, default_content, default_content_type,
+		max_requests, timeout, cors, created_at, updated_at, expires_at, rate_limit
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	err = sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
 		Args: []any{
-			token.UUID, nullableString(token.OwnerID), token.ReceiveMode, token.ViewMode,
+			token.UUID, nullableString(token.OwnerID), token.ReceiveMode, token.ViewMode, boolToSQLite(token.Persistent),
 			nullableString(token.ReceiveSecretHash), nullableString(token.ReceiveSecretPrefix),
-			token.DefaultStatus, token.DefaultContent, token.DefaultContentType, token.MaxRequests,
-			token.Timeout, boolToSQLite(token.CORS), formatTime(token.CreatedAt), formatTime(token.UpdatedAt),
-			formatTime(token.ExpiresAt), token.RateLimit,
+			token.SignatureProvider, nullableString(token.SignatureSecret), token.DefaultStatus,
+			token.DefaultContent, token.DefaultContentType, token.MaxRequests, token.Timeout, boolToSQLite(token.CORS),
+			formatTime(token.CreatedAt), formatTime(token.UpdatedAt), nullableTime(token.ExpiresAt), token.RateLimit,
 		},
 	})
 	if err != nil {
@@ -286,9 +315,9 @@ func (s *Store) GetToken(ctx context.Context, uuid string) (*models.Token, error
 	defer s.pool.Put(conn)
 
 	query := `SELECT
-		uuid, owner_id, receive_mode, view_mode, receive_secret_hash, receive_secret_prefix,
-		default_status, default_content, default_content_type, max_requests, timeout, cors,
-		created_at, updated_at, expires_at, rate_limit
+		uuid, owner_id, receive_mode, view_mode, persistent, receive_secret_hash, receive_secret_prefix,
+		signature_provider, signature_secret, default_status, default_content, default_content_type,
+		max_requests, timeout, cors, rate_limit, created_at, updated_at, expires_at
 	FROM tokens WHERE uuid = ?`
 
 	var token *models.Token
@@ -320,17 +349,17 @@ func (s *Store) ListTokens(ctx context.Context, params TokenListParams) (*TokenP
 
 	params = normalizeTokenListParams(params)
 	activeAt := formatTime(time.Now().UTC())
-	total, err := queryCount(conn, "SELECT COUNT(*) FROM tokens WHERE expires_at > ?", []any{activeAt})
+	total, err := queryCount(conn, "SELECT COUNT(*) FROM tokens WHERE persistent = 1 OR expires_at > ?", []any{activeAt})
 	if err != nil {
 		return nil, fmt.Errorf("count tokens: %w", err)
 	}
 
 	query := fmt.Sprintf(`SELECT
-		uuid, owner_id, receive_mode, view_mode, receive_secret_hash, receive_secret_prefix,
-		default_status, default_content, default_content_type, max_requests, timeout, cors,
-		created_at, updated_at, expires_at, rate_limit
+		uuid, owner_id, receive_mode, view_mode, persistent, receive_secret_hash, receive_secret_prefix,
+		signature_provider, signature_secret, default_status, default_content, default_content_type,
+		max_requests, timeout, cors, rate_limit, created_at, updated_at, expires_at
 	FROM tokens
-	WHERE expires_at > ?
+	WHERE persistent = 1 OR expires_at > ?
 	ORDER BY %s %s
 	LIMIT ? OFFSET ?`, tokenSortColumn(params.SortBy), sortDirection(params.Order))
 
@@ -369,16 +398,17 @@ func (s *Store) UpdateToken(ctx context.Context, token *models.Token) error {
 	applyDefaultTokenDefaults(token, s.config)
 
 	query := `UPDATE tokens SET
-		receive_mode = ?, view_mode = ?, receive_secret_hash = ?, receive_secret_prefix = ?,
-		default_status = ?, default_content = ?, default_content_type = ?, max_requests = ?, timeout = ?, cors = ?,
-		updated_at = ?, expires_at = ?, rate_limit = ?
+		receive_mode = ?, view_mode = ?, persistent = ?, receive_secret_hash = ?, receive_secret_prefix = ?,
+		signature_provider = ?, signature_secret = ?, default_status = ?, default_content = ?, default_content_type = ?,
+		max_requests = ?, timeout = ?, cors = ?, updated_at = ?, expires_at = ?, rate_limit = ?
 	WHERE uuid = ?`
 
 	err = sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
 		Args: []any{
-			token.ReceiveMode, token.ViewMode, nullableString(token.ReceiveSecretHash), nullableString(token.ReceiveSecretPrefix),
+			token.ReceiveMode, token.ViewMode, boolToSQLite(token.Persistent), nullableString(token.ReceiveSecretHash),
+			nullableString(token.ReceiveSecretPrefix), token.SignatureProvider, nullableString(token.SignatureSecret),
 			token.DefaultStatus, token.DefaultContent, token.DefaultContentType, token.MaxRequests,
-			token.Timeout, boolToSQLite(token.CORS), formatTime(token.UpdatedAt), formatTime(token.ExpiresAt),
+			token.Timeout, boolToSQLite(token.CORS), formatTime(token.UpdatedAt), nullableTime(token.ExpiresAt),
 			token.RateLimit, token.UUID,
 		},
 	})
@@ -421,9 +451,14 @@ func (s *Store) CreateRequest(ctx context.Context, req *models.Request) error {
 	}
 	defer s.pool.Put(conn)
 
+	if strings.TrimSpace(req.SignatureStatus) == "" {
+		req.SignatureStatus = "unknown"
+	}
+
 	query := `INSERT INTO requests (
-		uuid, token_id, ip, hostname, method, user_agent, content, query, headers, form_data, url, size, created_at
-	) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+		uuid, token_id, ip, hostname, method, user_agent, content, query, headers, form_data, url, size,
+		signature_status, signature_provider, signature_error, created_at
+	) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 	WHERE EXISTS (
 		SELECT 1
 		FROM tokens
@@ -434,7 +469,8 @@ func (s *Store) CreateRequest(ctx context.Context, req *models.Request) error {
 	err = sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
 		Args: []any{
 			req.UUID, req.TokenID, req.IP, req.Hostname, req.Method, req.UserAgent,
-			req.Content, req.Query, req.Headers, req.FormData, req.URL, req.Size, formatTime(req.CreatedAt),
+			req.Content, req.Query, req.Headers, req.FormData, req.URL, req.Size, req.SignatureStatus,
+			nullableString(req.SignatureProvider), nullableString(req.SignatureError), formatTime(req.CreatedAt),
 			req.TokenID, req.TokenID,
 		},
 	})
@@ -464,7 +500,8 @@ func (s *Store) GetRequest(ctx context.Context, tokenID, requestID string) (*mod
 	defer s.pool.Put(conn)
 
 	query := `SELECT
-		uuid, token_id, ip, hostname, method, user_agent, content, query, headers, form_data, url, size, created_at
+		uuid, token_id, ip, hostname, method, user_agent, content, query, headers, form_data, url, size,
+		signature_status, signature_provider, signature_error, created_at
 	FROM requests
 	WHERE token_id = ? AND uuid = ?`
 
@@ -535,7 +572,8 @@ func (s *Store) ListRequestsByToken(ctx context.Context, tokenID string, params 
 	}
 
 	query := fmt.Sprintf(`SELECT
-		uuid, token_id, ip, hostname, method, user_agent, content, query, headers, form_data, url, size, created_at
+		uuid, token_id, ip, hostname, method, user_agent, content, query, headers, form_data, url, size,
+		signature_status, signature_provider, signature_error, created_at
 	FROM requests
 	WHERE %s
 	ORDER BY %s %s
@@ -673,12 +711,14 @@ func (s *Store) scanToken(stmt *sqlite.Stmt) (*models.Token, error) {
 		UUID:               stmt.ColumnText(0),
 		ReceiveMode:        stmt.ColumnText(2),
 		ViewMode:           stmt.ColumnText(3),
-		DefaultStatus:      stmt.ColumnInt(6),
-		DefaultContent:     stmt.ColumnText(7),
-		DefaultContentType: stmt.ColumnText(8),
-		MaxRequests:        stmt.ColumnInt(9),
-		Timeout:            stmt.ColumnInt(10),
-		CORS:               stmt.ColumnInt(11) != 0,
+		Persistent:         stmt.ColumnInt(4) != 0,
+		SignatureProvider:  stmt.ColumnText(7),
+		DefaultStatus:      stmt.ColumnInt(9),
+		DefaultContent:     stmt.ColumnText(10),
+		DefaultContentType: stmt.ColumnText(11),
+		MaxRequests:        stmt.ColumnInt(12),
+		Timeout:            stmt.ColumnInt(13),
+		CORS:               stmt.ColumnInt(14) != 0,
 		RateLimit:          stmt.ColumnInt(15),
 	}
 
@@ -686,28 +726,34 @@ func (s *Store) scanToken(stmt *sqlite.Stmt) (*models.Token, error) {
 		ownerID := stmt.ColumnText(1)
 		token.OwnerID = &ownerID
 	}
-	if !stmt.ColumnIsNull(4) {
-		hash := stmt.ColumnText(4)
+	if !stmt.ColumnIsNull(5) {
+		hash := stmt.ColumnText(5)
 		token.ReceiveSecretHash = &hash
 	}
-	if !stmt.ColumnIsNull(5) {
-		prefix := stmt.ColumnText(5)
+	if !stmt.ColumnIsNull(6) {
+		prefix := stmt.ColumnText(6)
 		token.ReceiveSecretPrefix = &prefix
+	}
+	if !stmt.ColumnIsNull(8) {
+		secret := stmt.ColumnText(8)
+		token.SignatureSecret = &secret
 	}
 
 	var err error
-	token.CreatedAt, err = parseTime(stmt.ColumnText(12))
+	token.CreatedAt, err = parseTime(stmt.ColumnText(16))
 	if err != nil {
 		return nil, fmt.Errorf("parse token created_at: %w", err)
 	}
-	token.UpdatedAt, err = parseTime(stmt.ColumnText(13))
+	token.UpdatedAt, err = parseTime(stmt.ColumnText(17))
 	if err != nil {
 		return nil, fmt.Errorf("parse token updated_at: %w", err)
 	}
-	if stmt.ColumnIsNull(14) {
-		token.ExpiresAt = token.UpdatedAt.UTC().Add(s.config.TokenTTL)
+	if stmt.ColumnIsNull(18) {
+		if !token.Persistent {
+			token.ExpiresAt = token.UpdatedAt.UTC().Add(s.config.TokenTTL)
+		}
 	} else {
-		token.ExpiresAt, err = parseTime(stmt.ColumnText(14))
+		token.ExpiresAt, err = parseTime(stmt.ColumnText(18))
 		if err != nil {
 			return nil, fmt.Errorf("parse token expires_at: %w", err)
 		}
@@ -718,22 +764,31 @@ func (s *Store) scanToken(stmt *sqlite.Stmt) (*models.Token, error) {
 
 func scanRequest(stmt *sqlite.Stmt) (*models.Request, error) {
 	req := &models.Request{
-		UUID:      stmt.ColumnText(0),
-		TokenID:   stmt.ColumnText(1),
-		IP:        stmt.ColumnText(2),
-		Hostname:  stmt.ColumnText(3),
-		Method:    stmt.ColumnText(4),
-		UserAgent: stmt.ColumnText(5),
-		Content:   stmt.ColumnText(6),
-		Query:     stmt.ColumnText(7),
-		Headers:   stmt.ColumnText(8),
-		FormData:  stmt.ColumnText(9),
-		URL:       stmt.ColumnText(10),
-		Size:      stmt.ColumnInt(11),
+		UUID:            stmt.ColumnText(0),
+		TokenID:         stmt.ColumnText(1),
+		IP:              stmt.ColumnText(2),
+		Hostname:        stmt.ColumnText(3),
+		Method:          stmt.ColumnText(4),
+		UserAgent:       stmt.ColumnText(5),
+		Content:         stmt.ColumnText(6),
+		Query:           stmt.ColumnText(7),
+		Headers:         stmt.ColumnText(8),
+		FormData:        stmt.ColumnText(9),
+		URL:             stmt.ColumnText(10),
+		Size:            stmt.ColumnInt(11),
+		SignatureStatus: stmt.ColumnText(12),
+	}
+	if !stmt.ColumnIsNull(13) {
+		provider := stmt.ColumnText(13)
+		req.SignatureProvider = &provider
+	}
+	if !stmt.ColumnIsNull(14) {
+		message := stmt.ColumnText(14)
+		req.SignatureError = &message
 	}
 
 	var err error
-	req.CreatedAt, err = parseTime(stmt.ColumnText(12))
+	req.CreatedAt, err = parseTime(stmt.ColumnText(15))
 	if err != nil {
 		return nil, fmt.Errorf("parse request created_at: %w", err)
 	}
@@ -763,8 +818,19 @@ func nullableString(value *string) any {
 	return *value
 }
 
+func nullableTime(value time.Time) any {
+	if value.IsZero() {
+		return nil
+	}
+	return formatTime(value)
+}
+
 func applyDefaultTokenDefaults(token *models.Token, cfg Config) {
 	applyDefaultTokenMaxRequests(token, cfg.MaxRequests)
+	if token.Persistent {
+		token.ExpiresAt = time.Time{}
+		return
+	}
 	if !token.ExpiresAt.IsZero() {
 		return
 	}
@@ -990,7 +1056,8 @@ func (s *Store) StreamRequestsByToken(ctx context.Context, tokenID string, param
 
 	whereSQL := strings.Join(whereClauses, " AND ")
 	query := fmt.Sprintf(`SELECT
-		uuid, token_id, ip, hostname, method, user_agent, content, query, headers, form_data, url, size, created_at
+		uuid, token_id, ip, hostname, method, user_agent, content, query, headers, form_data, url, size,
+		signature_status, signature_provider, signature_error, created_at
 	FROM requests
 	WHERE %s
 	ORDER BY created_at DESC`, whereSQL)
@@ -1047,4 +1114,122 @@ func ensureTokenRateLimitColumn(conn *sqlite.Conn) error {
 		return nil
 	}
 	return sqlitex.ExecuteTransient(conn, "ALTER TABLE tokens ADD COLUMN rate_limit INTEGER NOT NULL DEFAULT 0", nil)
+}
+
+func ensureTokenPersistentColumn(conn *sqlite.Conn) error {
+	var hasPersistent bool
+	err := sqlitex.ExecuteTransient(conn, "PRAGMA table_info(tokens)", &sqlitex.ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			if stmt.ColumnText(1) == "persistent" {
+				hasPersistent = true
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if hasPersistent {
+		return nil
+	}
+	return sqlitex.ExecuteTransient(conn, "ALTER TABLE tokens ADD COLUMN persistent INTEGER NOT NULL DEFAULT 0", nil)
+}
+
+func ensureTokenSignatureProviderColumn(conn *sqlite.Conn) error {
+	var hasColumn bool
+	err := sqlitex.ExecuteTransient(conn, "PRAGMA table_info(tokens)", &sqlitex.ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			if stmt.ColumnText(1) == "signature_provider" {
+				hasColumn = true
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if hasColumn {
+		return nil
+	}
+	return sqlitex.ExecuteTransient(conn, "ALTER TABLE tokens ADD COLUMN signature_provider TEXT NOT NULL DEFAULT ''", nil)
+}
+
+func ensureTokenSignatureSecretColumn(conn *sqlite.Conn) error {
+	var hasColumn bool
+	err := sqlitex.ExecuteTransient(conn, "PRAGMA table_info(tokens)", &sqlitex.ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			if stmt.ColumnText(1) == "signature_secret" {
+				hasColumn = true
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if hasColumn {
+		return nil
+	}
+	return sqlitex.ExecuteTransient(conn, "ALTER TABLE tokens ADD COLUMN signature_secret TEXT", nil)
+}
+
+func ensureRequestSignatureStatusColumn(conn *sqlite.Conn) error {
+	var hasColumn bool
+	err := sqlitex.ExecuteTransient(conn, "PRAGMA table_info(requests)", &sqlitex.ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			if stmt.ColumnText(1) == "signature_status" {
+				hasColumn = true
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if hasColumn {
+		return nil
+	}
+	return sqlitex.ExecuteTransient(conn, "ALTER TABLE requests ADD COLUMN signature_status TEXT NOT NULL DEFAULT 'unknown'", nil)
+}
+
+func ensureRequestSignatureProviderColumn(conn *sqlite.Conn) error {
+	var hasColumn bool
+	err := sqlitex.ExecuteTransient(conn, "PRAGMA table_info(requests)", &sqlitex.ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			if stmt.ColumnText(1) == "signature_provider" {
+				hasColumn = true
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if hasColumn {
+		return nil
+	}
+	return sqlitex.ExecuteTransient(conn, "ALTER TABLE requests ADD COLUMN signature_provider TEXT", nil)
+}
+
+func ensureRequestSignatureErrorColumn(conn *sqlite.Conn) error {
+	var hasColumn bool
+	err := sqlitex.ExecuteTransient(conn, "PRAGMA table_info(requests)", &sqlitex.ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			if stmt.ColumnText(1) == "signature_error" {
+				hasColumn = true
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if hasColumn {
+		return nil
+	}
+	return sqlitex.ExecuteTransient(conn, "ALTER TABLE requests ADD COLUMN signature_error TEXT", nil)
+}
+
+func backfillRequestSignatureStatus(conn *sqlite.Conn) error {
+	return sqlitex.ExecuteTransient(conn, "UPDATE requests SET signature_status = 'unknown' WHERE signature_status IS NULL OR signature_status = ''", nil)
 }

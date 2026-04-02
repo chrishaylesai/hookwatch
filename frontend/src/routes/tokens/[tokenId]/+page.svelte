@@ -16,6 +16,8 @@
 		ActionCompletedEvent,
 		ActionLog,
 		HookGrant,
+		ReplayResponse,
+		RequestDiffResponse,
 		RequestCreatedEvent,
 		RequestListResponse,
 		RequestResponse,
@@ -34,6 +36,9 @@
 		timeout: string;
 		cors: boolean;
 		rateLimit: string;
+		persistent: boolean;
+		signatureProvider: '' | 'github' | 'stripe';
+		signatureSecret: string;
 	};
 
 	type AccessSettingsDraft = {
@@ -65,7 +70,10 @@
 		defaultContent: '',
 		timeout: '0',
 		cors: false,
-		rateLimit: '0'
+		rateLimit: '0',
+		persistent: false,
+		signatureProvider: '',
+		signatureSecret: ''
 	});
 	let accessSettingsDraft = $state<AccessSettingsDraft>({
 		receiveMode: 'public',
@@ -86,6 +94,14 @@
 
 	// Action logs for selected request
 	let actionLogs = $state<ActionLog[]>([]);
+	let replayURL = $state('');
+	let replayState = $state<'idle' | 'loading' | 'success' | 'error'>('idle');
+	let replayResult = $state<ReplayResponse | null>(null);
+	let replayError = $state('');
+	let compareRequestId = $state('');
+	let diffResult = $state<RequestDiffResponse | null>(null);
+	let diffLoading = $state(false);
+	let diffError = $state('');
 
 	// Filter state
 	let filterMethod = $state('');
@@ -108,6 +124,12 @@
 	const webhookUrl = $derived(buildWebhookURL(currentToken.uuid));
 	const createdAtLabel = $derived(formatTimestamp(currentToken.created_at));
 	const expiresAtLabel = $derived(formatTimestamp(currentToken.expires_at));
+	const persistenceLabel = $derived(currentToken.persistent ? 'Never' : expiresAtLabel);
+	const canManagePersistence = $derived(
+		auth.authEnabled &&
+			!!auth.user &&
+			(currentToken.owner_id === auth.user.id || auth.user.global_role === 'admin')
+	);
 	const receiveSecretPrefix = $derived(currentToken.receive_secret_prefix ?? null);
 	const curlCommand = $derived.by(() => (selectedRequest ? requestToCurl(selectedRequest) : ''));
 	const liveUpdatesLabel = $derived(
@@ -135,7 +157,10 @@
 			defaultContent: source.default_content,
 			timeout: String(source.timeout),
 			cors: source.cors,
-			rateLimit: String(source.rate_limit ?? 0)
+			rateLimit: String(source.rate_limit ?? 0),
+			persistent: source.persistent,
+			signatureProvider: (source.signature_provider as '' | 'github' | 'stripe' | undefined) ?? '',
+			signatureSecret: ''
 		};
 	}
 
@@ -170,6 +195,13 @@
 		selectedRequestOverride = undefined;
 		receiveSecretOverride = undefined;
 		pendingNewerRequests = 0;
+		replayURL = data.selectedRequest?.url ?? '';
+		replayState = 'idle';
+		replayResult = null;
+		replayError = '';
+		compareRequestId = '';
+		diffResult = null;
+		diffError = '';
 	});
 
 	$effect(() => {
@@ -312,6 +344,13 @@
 		selectedRequestIdOverride = request.uuid;
 		selectedRequestOverride = request;
 		curlCopyState = 'idle';
+		replayURL = request.url;
+		replayState = 'idle';
+		replayResult = null;
+		replayError = '';
+		compareRequestId = '';
+		diffResult = null;
+		diffError = '';
 		updateURL(requestList.page, request.uuid, historyMode);
 	}
 
@@ -398,6 +437,28 @@
 				return 'bg-rose-100 text-rose-800';
 			default:
 				return 'bg-black/6 text-[var(--muted-foreground)]';
+		}
+	}
+
+	function signatureTone(status: RequestResponse['signature_validation']['status']) {
+		switch (status) {
+			case 'valid':
+				return 'bg-emerald-100 text-emerald-800';
+			case 'invalid':
+				return 'bg-rose-100 text-rose-800';
+			default:
+				return 'bg-black/6 text-[var(--muted-foreground)]';
+		}
+	}
+
+	function signatureLabel(request: RequestResponse) {
+		switch (request.signature_validation.status) {
+			case 'valid':
+				return 'Signature valid';
+			case 'invalid':
+				return 'Signature invalid';
+			default:
+				return 'Signature not checked';
 		}
 	}
 
@@ -569,6 +630,24 @@
 			return;
 		}
 
+		const signatureProvider = tokenSettingsDraft.signatureProvider;
+		const signatureSecret = tokenSettingsDraft.signatureSecret.trim();
+		if (
+			signatureProvider &&
+			!signatureSecret &&
+			!currentToken.signature_secret_configured
+		) {
+			tokenSettingsError = 'Set a signature secret before enabling validation.';
+			return;
+		}
+		if (
+			tokenSettingsDraft.persistent !== currentToken.persistent &&
+			!canManagePersistence
+		) {
+			tokenSettingsError = 'Only the token owner or an admin can change persistence.';
+			return;
+		}
+
 		tokenSettingsSaving = true;
 		tokenSettingsError = '';
 
@@ -584,7 +663,10 @@
 					default_content: tokenSettingsDraft.defaultContent,
 					timeout,
 					cors: tokenSettingsDraft.cors,
-					rate_limit: Number.parseInt(tokenSettingsDraft.rateLimit, 10) || 0
+					rate_limit: Number.parseInt(tokenSettingsDraft.rateLimit, 10) || 0,
+					persistent: tokenSettingsDraft.persistent,
+					signature_provider: signatureProvider,
+					...(signatureSecret ? { signature_secret: signatureSecret } : {})
 				})
 			});
 
@@ -721,6 +803,88 @@
 		const qs = params.toString();
 		return `/api/tokens/${currentToken.uuid}/requests/export.${format}${qs ? `?${qs}` : ''}`;
 	}
+
+	function openAPISpecUrl() {
+		return `/api/tokens/${currentToken.uuid}/openapi.json`;
+	}
+
+	async function replaySelectedRequest() {
+		if (!selectedRequest || !replayURL.trim()) {
+			replayError = 'A replay URL is required.';
+			return;
+		}
+
+		replayState = 'loading';
+		replayError = '';
+		replayResult = null;
+
+		try {
+			const response = await fetch(`/api/tokens/${currentToken.uuid}/requests/${selectedRequest.uuid}/replay`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					url: replayURL.trim(),
+					preserve_headers: true,
+					additional_headers: {
+						'X-HookWatch-Replay': 'true'
+					}
+				})
+			});
+
+			const payload = (await response.json().catch(() => null)) as
+				| ReplayResponse
+				| { error?: string }
+				| null;
+
+			if (!response.ok) {
+				replayState = 'error';
+				replayError = payload && 'error' in payload && payload.error ? payload.error : 'Replay failed.';
+				return;
+			}
+
+			replayResult = payload as ReplayResponse;
+			replayState = 'success';
+		} catch {
+			replayState = 'error';
+			replayError = 'Replay failed.';
+		}
+	}
+
+	async function compareSelectedRequest() {
+		if (!selectedRequest || !compareRequestId) {
+			diffError = 'Choose another request to compare.';
+			return;
+		}
+
+		diffLoading = true;
+		diffError = '';
+		diffResult = null;
+
+		try {
+			const response = await fetch(
+				`/api/tokens/${currentToken.uuid}/requests/diff?left=${selectedRequest.uuid}&right=${compareRequestId}`
+			);
+			const payload = (await response.json().catch(() => null)) as
+				| RequestDiffResponse
+				| { error?: string }
+				| null;
+
+			if (!response.ok) {
+				diffError = payload && 'error' in payload && payload.error ? payload.error : 'Compare failed.';
+				diffResult = null;
+				return;
+			}
+
+			diffResult = payload as RequestDiffResponse;
+		} catch {
+			diffError = 'Compare failed.';
+			diffResult = null;
+		} finally {
+			diffLoading = false;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -764,6 +928,12 @@
 						<div class="flex flex-wrap items-center gap-2">
 							<Badge tone="muted">{currentToken.view_mode} view</Badge>
 							<Badge tone="muted">{currentToken.receive_mode} receive</Badge>
+							{#if currentToken.persistent}
+								<Badge tone="muted">persistent</Badge>
+							{/if}
+							{#if currentToken.signature_provider}
+								<Badge tone="muted">{currentToken.signature_provider} signatures</Badge>
+							{/if}
 							<Badge tone="muted">{currentToken.default_status}</Badge>
 						</div>
 					</div>
@@ -785,6 +955,9 @@
 						<Button type="button" size="sm" variant="outline" onclick={openAccessSettingsModal}>
 							Access
 						</Button>
+						<Button href={openAPISpecUrl()} size="sm" variant="ghost">
+							Download OpenAPI
+						</Button>
 					</div>
 
 					<div class="grid gap-3 sm:grid-cols-2">
@@ -798,13 +971,19 @@
 							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 								Expires
 							</p>
-							<p class="mt-2 text-sm">{expiresAtLabel}</p>
+							<p class="mt-2 text-sm">{persistenceLabel}</p>
 						</div>
 						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
 							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 								Created
 							</p>
 							<p class="mt-2 text-sm">{createdAtLabel}</p>
+						</div>
+						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+								Persistence
+							</p>
+							<p class="mt-2 text-sm">{currentToken.persistent ? 'Enabled' : 'Standard TTL'}</p>
 						</div>
 						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
 							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
@@ -855,6 +1034,18 @@
 								CORS
 							</p>
 							<p class="mt-2 text-sm">{currentToken.cors ? 'Enabled' : 'Disabled'}</p>
+						</div>
+						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4 sm:col-span-2">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+								Signature validation
+							</p>
+							<p class="mt-2 text-sm">
+								{#if currentToken.signature_provider}
+									{currentToken.signature_provider} {currentToken.signature_secret_configured ? 'enabled' : 'configured without secret'}
+								{:else}
+									Disabled
+								{/if}
+							</p>
 						</div>
 						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4 sm:col-span-2">
 							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
@@ -980,6 +1171,11 @@
 								<div class="mt-4 flex flex-col items-start gap-1 text-sm text-[var(--muted-foreground)] sm:flex-row sm:items-center sm:justify-between sm:gap-3">
 									<span>{formatListTimestamp(request.created_at)}</span>
 									<div class="flex items-center gap-2">
+										<span
+											class={`inline-flex rounded-full px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.05em] ${signatureTone(request.signature_validation.status)}`}
+										>
+											{request.signature_validation.status}
+										</span>
 										{#if request.size > 0}
 											<span class="text-xs">{formatBytes(request.size)}</span>
 										{/if}
@@ -1084,6 +1280,134 @@
 						{/if}
 					</div>
 
+					<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+						<div class="flex flex-wrap items-start justify-between gap-3">
+							<div>
+								<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+									Signature validation
+								</p>
+								<p class="mt-2 text-sm">
+									{#if selectedRequest.signature_validation.provider}
+										Provider: {selectedRequest.signature_validation.provider}
+									{:else}
+										No provider configured for this token.
+									{/if}
+								</p>
+							</div>
+							<span class={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.05em] ${signatureTone(selectedRequest.signature_validation.status)}`}>
+								{signatureLabel(selectedRequest)}
+							</span>
+						</div>
+						{#if selectedRequest.signature_validation.error}
+							<p class="mt-3 text-sm text-red-700">{selectedRequest.signature_validation.error}</p>
+						{/if}
+					</div>
+
+					<div class="grid gap-5 xl:grid-cols-2">
+						<Card class="space-y-4 border-[var(--border)] bg-[var(--card)] p-5 shadow-none">
+							<div class="flex items-start justify-between gap-3">
+								<div>
+									<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+										Replay
+									</p>
+									<h3 class="mt-2 text-lg font-semibold">Re-send this request</h3>
+								</div>
+								<span class={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.05em] ${signatureTone(selectedRequest.signature_validation.status)}`}>
+									{signatureLabel(selectedRequest)}
+								</span>
+							</div>
+
+							<label class="space-y-2">
+								<span class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+									Target URL
+								</span>
+								<input
+									class="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
+									type="url"
+									bind:value={replayURL}
+									placeholder="https://target.example.com/webhook"
+								/>
+							</label>
+
+							<div class="flex flex-wrap items-center gap-3">
+								<Button type="button" size="sm" onclick={replaySelectedRequest} disabled={replayState === 'loading'}>
+									{replayState === 'loading' ? 'Replaying...' : 'Replay request'}
+								</Button>
+								{#if replayState === 'success'}
+									<p class="text-sm text-[var(--accent-strong)]">Replay completed.</p>
+								{:else if replayState === 'error'}
+									<p class="text-sm text-red-700">{replayError}</p>
+								{/if}
+							</div>
+
+							{#if replayResult}
+								<div class="rounded-lg border border-[var(--border)] bg-[var(--accent-soft)] px-4 py-4">
+									<div class="flex flex-wrap items-center gap-3 text-sm">
+										<span class="font-semibold">Status {replayResult.status}</span>
+										<span>{replayResult.duration_ms}ms</span>
+									</div>
+									<p class="mt-3 break-all font-mono text-xs text-[var(--muted-foreground)]">{replayResult.url}</p>
+									<pre class="mt-3 overflow-x-auto rounded-md bg-[var(--card)] px-4 py-4 font-mono text-sm leading-6 whitespace-pre-wrap break-words">{replayResult.body || 'Empty response body'}</pre>
+								</div>
+							{/if}
+						</Card>
+
+						<Card class="space-y-4 border-[var(--border)] bg-[var(--card)] p-5 shadow-none">
+							<div>
+								<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+									Compare
+								</p>
+								<h3 class="mt-2 text-lg font-semibold">Diff against another request</h3>
+							</div>
+
+							<div class="flex flex-col gap-3 sm:flex-row">
+								<select
+									class="flex-1 rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
+									bind:value={compareRequestId}
+								>
+									<option value="">Choose another request</option>
+									{#each requestList.data.filter((request) => request.uuid !== selectedRequest.uuid) as request}
+										<option value={request.uuid}>
+											{request.method} {requestPath(request)} · {formatListTimestamp(request.created_at)}
+										</option>
+									{/each}
+								</select>
+								<Button type="button" size="sm" variant="outline" onclick={compareSelectedRequest} disabled={diffLoading}>
+									{diffLoading ? 'Comparing...' : 'Compare'}
+								</Button>
+							</div>
+
+							{#if diffError}
+								<p class="text-sm text-red-700">{diffError}</p>
+							{/if}
+
+							{#if diffResult}
+								<div class="space-y-3">
+									{#each diffResult.sections as section}
+										<div class="rounded-lg border border-[var(--border)] bg-[var(--accent-soft)] px-4 py-4">
+											<div class="flex items-center justify-between gap-3">
+												<p class="text-sm font-semibold">{section.label}</p>
+												<span class={`inline-flex rounded-full px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.05em] ${section.changed ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+													{section.changed ? 'changed' : 'same'}
+												</span>
+											</div>
+											<div class="mt-3 grid gap-3 xl:grid-cols-2">
+												<div>
+													<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">Current</p>
+													<pre class="mt-2 overflow-x-auto rounded-md bg-[var(--card)] px-4 py-4 font-mono text-sm leading-6 whitespace-pre-wrap break-words">{section.left || 'Empty'}</pre>
+												</div>
+												<div>
+													<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">Comparison</p>
+													<pre class="mt-2 overflow-x-auto rounded-md bg-[var(--card)] px-4 py-4 font-mono text-sm leading-6 whitespace-pre-wrap break-words">{section.right || 'Empty'}</pre>
+												</div>
+											</div>
+										</div>
+									{/each}
+								</div>
+							{/if}
+						</Card>
+					</div>
+
 					<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
 						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
 							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
@@ -1114,6 +1438,12 @@
 								Size
 							</p>
 							<p class="mt-2 text-sm">{formatBytes(selectedRequest.size)}</p>
+						</div>
+						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+								Signature
+							</p>
+							<p class="mt-2 text-sm">{signatureLabel(selectedRequest)}</p>
 						</div>
 					</div>
 
@@ -1286,6 +1616,55 @@
 					bind:value={tokenSettingsDraft.rateLimit}
 				/>
 				<p class="text-xs text-[var(--muted-foreground)]">Requests per minute per IP. `0` = unlimited.</p>
+			</label>
+
+			<label class="flex items-center gap-3 rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 sm:col-span-2">
+				<input
+					type="checkbox"
+					bind:checked={tokenSettingsDraft.persistent}
+					disabled={!canManagePersistence}
+				/>
+				<div>
+					<p class="text-sm">Keep this hook URL permanently</p>
+					<p class="text-xs text-[var(--muted-foreground)]">
+						{#if canManagePersistence}
+							Persistent hooks do not expire automatically.
+						{:else}
+							Only the token owner or an admin can change persistence.
+						{/if}
+					</p>
+				</div>
+			</label>
+
+			<label class="space-y-2">
+				<span class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+					Signature provider
+				</span>
+				<select
+					class="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
+					bind:value={tokenSettingsDraft.signatureProvider}
+				>
+					<option value="">Disabled</option>
+					<option value="github">GitHub</option>
+					<option value="stripe">Stripe</option>
+				</select>
+			</label>
+
+			<label class="space-y-2">
+				<span class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+					Signature secret
+				</span>
+				<input
+					class="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
+					type="password"
+					bind:value={tokenSettingsDraft.signatureSecret}
+					placeholder={currentToken.signature_secret_configured ? 'Leave blank to keep existing secret' : 'Enter provider signing secret'}
+				/>
+				<p class="text-xs text-[var(--muted-foreground)]">
+					{currentToken.signature_secret_configured
+						? 'A secret is already stored and will remain unchanged if this field stays empty.'
+						: 'Required when signature validation is enabled.'}
+				</p>
 			</label>
 		</div>
 

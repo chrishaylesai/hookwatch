@@ -5,6 +5,8 @@ Local run instructions for the `hookwatch` app.
 Additional docs:
 
 - [`docs/auth.md`](./docs/auth.md) for running the app in `none`, `local`, and `oidc` auth modes
+- [`docs/action_transformation.md`](./docs/action_transformation.md) for the action pipeline and transform behavior
+- [`docs/advanced_requests.md`](./docs/advanced_requests.md) for replay, diffing, OpenAPI generation, persistence, and signature validation
 
 ## What It Runs
 

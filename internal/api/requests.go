@@ -20,19 +20,20 @@ type requestHandler struct {
 }
 
 type requestResponse struct {
-	UUID      string         `json:"uuid"`
-	TokenID   string         `json:"token_id"`
-	IP        string         `json:"ip"`
-	Hostname  string         `json:"hostname"`
-	Method    string         `json:"method"`
-	UserAgent string         `json:"user_agent"`
-	Content   string         `json:"content"`
-	Query     string         `json:"query"`
-	Headers   map[string]any `json:"headers"`
-	FormData  map[string]any `json:"form_data"`
-	URL       string         `json:"url"`
-	Size      int            `json:"size"`
-	CreatedAt string         `json:"created_at"`
+	UUID                string                      `json:"uuid"`
+	TokenID             string                      `json:"token_id"`
+	IP                  string                      `json:"ip"`
+	Hostname            string                      `json:"hostname"`
+	Method              string                      `json:"method"`
+	UserAgent           string                      `json:"user_agent"`
+	Content             string                      `json:"content"`
+	Query               string                      `json:"query"`
+	Headers             map[string]any              `json:"headers"`
+	FormData            map[string]any              `json:"form_data"`
+	URL                 string                      `json:"url"`
+	Size                int                         `json:"size"`
+	SignatureValidation signatureValidationResponse `json:"signature_validation"`
+	CreatedAt           string                      `json:"created_at"`
 }
 
 type requestListResponse struct {
@@ -41,6 +42,12 @@ type requestListResponse struct {
 	Page       int               `json:"page"`
 	PerPage    int               `json:"per_page"`
 	TotalPages int               `json:"total_pages"`
+}
+
+type signatureValidationResponse struct {
+	Status   string  `json:"status"`
+	Provider *string `json:"provider,omitempty"`
+	Error    *string `json:"error,omitempty"`
 }
 
 type requestListQuery struct {
@@ -382,6 +389,11 @@ func toRequestResponse(req *models.Request) requestResponse {
 		FormData:  decodeJSONMap(req.FormData),
 		URL:       req.URL,
 		Size:      req.Size,
+		SignatureValidation: signatureValidationResponse{
+			Status:   req.SignatureStatus,
+			Provider: req.SignatureProvider,
+			Error:    req.SignatureError,
+		},
 		CreatedAt: req.CreatedAt.UTC().Format(time.RFC3339),
 	}
 }

@@ -82,6 +82,7 @@ func (h *captureHandler) capture(w http.ResponseWriter, r *http.Request) {
 
 	sanitizedHeaders := sanitizedCaptureHeaders(r.Header, secretSource, token.ReceiveMode == receiveModePrivate)
 	sanitizedQuery := sanitizedCaptureQuery(r.URL.RawQuery, token.ReceiveMode == receiveModePrivate)
+	signatureStatus, signatureProvider, signatureError := evaluateRequestSignature(token, r.Header, body)
 
 	headersJSON, err := encodeHeaders(sanitizedHeaders)
 	if err != nil {
@@ -98,19 +99,22 @@ func (h *captureHandler) capture(w http.ResponseWriter, r *http.Request) {
 	reqID := uuid.NewString()
 	now := time.Now().UTC()
 	record := &models.Request{
-		UUID:      reqID,
-		TokenID:   tokenID,
-		IP:        remoteIP(r.RemoteAddr),
-		Hostname:  r.Host,
-		Method:    r.Method,
-		UserAgent: r.UserAgent(),
-		Content:   string(body),
-		Query:     sanitizedQuery,
-		Headers:   headersJSON,
-		FormData:  formJSON,
-		URL:       absoluteURL(r, sanitizedQuery),
-		Size:      len(body),
-		CreatedAt: now,
+		UUID:              reqID,
+		TokenID:           tokenID,
+		IP:                remoteIP(r.RemoteAddr),
+		Hostname:          r.Host,
+		Method:            r.Method,
+		UserAgent:         r.UserAgent(),
+		Content:           string(body),
+		Query:             sanitizedQuery,
+		Headers:           headersJSON,
+		FormData:          formJSON,
+		URL:               absoluteURL(r, sanitizedQuery),
+		Size:              len(body),
+		SignatureStatus:   signatureStatus,
+		SignatureProvider: signatureProvider,
+		SignatureError:    signatureError,
+		CreatedAt:         now,
 	}
 
 	if err := h.store.CreateRequest(r.Context(), record); err != nil {

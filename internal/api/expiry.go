@@ -21,11 +21,11 @@ func loadActiveToken(ctx context.Context, db *store.Store, tokenID string, touch
 	}
 
 	now := timeNow().UTC()
-	if !token.ExpiresAt.After(now) {
+	if !token.Persistent && !token.ExpiresAt.After(now) {
 		return nil, errTokenExpired
 	}
 
-	if touch {
+	if touch && !token.Persistent {
 		expiresAt, err := db.TouchTokenExpiry(ctx, tokenID, now)
 		if err != nil {
 			return nil, err
@@ -37,6 +37,9 @@ func loadActiveToken(ctx context.Context, db *store.Store, tokenID string, touch
 }
 
 func refreshTokenExpiry(ctx context.Context, db *store.Store, token *models.Token) error {
+	if token.Persistent {
+		return nil
+	}
 	expiresAt, err := db.TouchTokenExpiry(ctx, token.UUID, timeNow().UTC())
 	if err != nil {
 		return err

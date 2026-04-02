@@ -38,7 +38,7 @@ func (s *Store) DeleteExpiredTokens(ctx context.Context, now time.Time) (int, er
 	}
 	defer s.pool.Put(conn)
 
-	err = sqlitex.ExecuteTransient(conn, "DELETE FROM tokens WHERE expires_at <= ?", &sqlitex.ExecOptions{
+	err = sqlitex.ExecuteTransient(conn, "DELETE FROM tokens WHERE persistent = 0 AND expires_at <= ?", &sqlitex.ExecOptions{
 		Args: []any{formatTime(now.UTC())},
 	})
 	if err != nil {

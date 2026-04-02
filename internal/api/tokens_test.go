@@ -92,6 +92,68 @@ func TestCreateTokenForcesPublicViewModeInAnonymousAuth(t *testing.T) {
 	}
 }
 
+func TestCreatePersistentTokenRequiresAuthentication(t *testing.T) {
+	t.Parallel()
+
+	db := newTestStore(t)
+	router := NewRouter(db, hub.New(), authModeNone, nil, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/tokens", bytes.NewReader([]byte(`{"persistent":true}`)))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestCreatePersistentTokenForAuthenticatedOwner(t *testing.T) {
+	t.Parallel()
+
+	db := newTestStore(t)
+	user := createAPIUser(t, db, "owner-persistent", "owner-persistent@example.com", "user")
+	router := NewRouter(db, hub.New(), "local", &fakeAuthService{}, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/tokens", bytes.NewReader([]byte(`{
+		"persistent":true,
+		"view_mode":"private",
+		"signature_provider":"github",
+		"signature_secret":"topsecret"
+	}`)))
+	req = requestWithUser(req, user)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusCreated)
+	}
+
+	var resp tokenResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	if !resp.Persistent {
+		t.Fatal("expected persistent token response")
+	}
+	if !resp.SignatureConfigured {
+		t.Fatal("expected signature secret to be marked configured")
+	}
+	if resp.SignatureProvider != "github" {
+		t.Fatalf("signature_provider = %q, want github", resp.SignatureProvider)
+	}
+
+	stored, err := db.GetToken(context.Background(), resp.UUID)
+	if err != nil {
+		t.Fatalf("GetToken: %v", err)
+	}
+	if !stored.Persistent {
+		t.Fatal("expected stored token to be persistent")
+	}
+	if stored.SignatureSecret == nil || *stored.SignatureSecret != "topsecret" {
+		t.Fatalf("signature_secret = %#v, want stored secret", stored.SignatureSecret)
+	}
+}
+
 func TestCreatePrivateTokenReturnsReceiveSecretAndStoresHashOnly(t *testing.T) {
 	t.Parallel()
 

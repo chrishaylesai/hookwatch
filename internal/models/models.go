@@ -31,8 +31,11 @@ type Token struct {
 	OwnerID             *string   `json:"owner_id,omitempty"`
 	ReceiveMode         string    `json:"receive_mode"`
 	ViewMode            string    `json:"view_mode"`
+	Persistent          bool      `json:"persistent"`
 	ReceiveSecretHash   *string   `json:"-"`
 	ReceiveSecretPrefix *string   `json:"receive_secret_prefix,omitempty"`
+	SignatureProvider   string    `json:"signature_provider,omitempty"`
+	SignatureSecret     *string   `json:"-"`
 	DefaultStatus       int       `json:"default_status"`
 	DefaultContent      string    `json:"default_content"`
 	DefaultContentType  string    `json:"default_content_type"`
@@ -47,19 +50,22 @@ type Token struct {
 
 // Request represents a captured webhook request.
 type Request struct {
-	UUID      string    `json:"uuid"`
-	TokenID   string    `json:"token_id"`
-	IP        string    `json:"ip"`
-	Hostname  string    `json:"hostname"`
-	Method    string    `json:"method"`
-	UserAgent string    `json:"user_agent"`
-	Content   string    `json:"content"`
-	Query     string    `json:"query"`     // JSON encoded
-	Headers   string    `json:"headers"`   // JSON encoded
-	FormData  string    `json:"form_data"` // JSON encoded
-	URL       string    `json:"url"`
-	Size      int       `json:"size"`
-	CreatedAt time.Time `json:"created_at"`
+	UUID              string    `json:"uuid"`
+	TokenID           string    `json:"token_id"`
+	IP                string    `json:"ip"`
+	Hostname          string    `json:"hostname"`
+	Method            string    `json:"method"`
+	UserAgent         string    `json:"user_agent"`
+	Content           string    `json:"content"`
+	Query             string    `json:"query"`     // JSON encoded
+	Headers           string    `json:"headers"`   // JSON encoded
+	FormData          string    `json:"form_data"` // JSON encoded
+	URL               string    `json:"url"`
+	Size              int       `json:"size"`
+	SignatureStatus   string    `json:"signature_status"`
+	SignatureProvider *string   `json:"signature_provider,omitempty"`
+	SignatureError    *string   `json:"signature_error,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 // Action represents a custom action attached to a token's pipeline.

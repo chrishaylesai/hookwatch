@@ -69,11 +69,14 @@ func NewRouter(db *store.Store, eventHub *hub.Hub, authMode string, authService 
 			r.Get("/{tokenId}/events", eventHandler.stream)
 			r.Get("/{tokenId}/requests", requestHandler.listRequests)
 			r.Delete("/{tokenId}/requests", requestHandler.deleteAllRequests)
+			r.Get("/{tokenId}/requests/diff", requestHandler.diffRequests)
 			r.Get("/{tokenId}/requests/{requestId}", requestHandler.getRequest)
 			r.Get("/{tokenId}/requests/{requestId}/raw", requestHandler.getRawRequest)
+			r.Post("/{tokenId}/requests/{requestId}/replay", requestHandler.replayRequest)
 			r.Delete("/{tokenId}/requests/{requestId}", requestHandler.deleteRequest)
 			r.Get("/{tokenId}/requests/export.csv", exportH.exportCSV)
 			r.Get("/{tokenId}/requests/export.json", exportH.exportJSON)
+			r.Get("/{tokenId}/openapi.json", requestHandler.getOpenAPISpec)
 
 			// Action management routes
 			r.Get("/{tokenId}/actions", actionH.listActions)

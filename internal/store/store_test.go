@@ -359,6 +359,40 @@ func TestDeleteExpiredTokensRemovesOnlyExpiredTokens(t *testing.T) {
 	}
 }
 
+func TestPersistentTokenSkipsExpiryAndCleanup(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 3, 31, 15, 0, 0, 0, time.UTC)
+
+	token := newToken("token-persistent", now)
+	token.Persistent = true
+
+	if err := s.CreateToken(ctx, token); err != nil {
+		t.Fatalf("CreateToken: %v", err)
+	}
+
+	stored, err := s.GetToken(ctx, token.UUID)
+	if err != nil {
+		t.Fatalf("GetToken: %v", err)
+	}
+	if !stored.Persistent {
+		t.Fatal("expected persistent token to remain persistent")
+	}
+	if !stored.ExpiresAt.IsZero() {
+		t.Fatalf("expires_at = %v, want zero time for persistent token", stored.ExpiresAt)
+	}
+
+	deleted, err := s.DeleteExpiredTokens(ctx, now.Add(365*24*time.Hour))
+	if err != nil {
+		t.Fatalf("DeleteExpiredTokens: %v", err)
+	}
+	if deleted != 0 {
+		t.Fatalf("deleted = %d, want 0", deleted)
+	}
+}
+
 func TestRunTokenCleanupDeletesExpiredTokens(t *testing.T) {
 	s := newTestStore(t)
 	ctx, cancel := context.WithCancel(context.Background())
