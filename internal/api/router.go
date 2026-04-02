@@ -11,22 +11,25 @@ import (
 	"github.com/chrishaylesai/hookwatch/internal/authz"
 	"github.com/chrishaylesai/hookwatch/internal/hub"
 	"github.com/chrishaylesai/hookwatch/internal/store"
+	"github.com/chrishaylesai/hookwatch/internal/worker"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
 // NewRouter creates the HTTP router with all routes.
-func NewRouter(db *store.Store, eventHub *hub.Hub, authMode string, authService auth.Authenticator) http.Handler {
+func NewRouter(db *store.Store, eventHub *hub.Hub, authMode string, authService auth.Authenticator, w *worker.Worker) http.Handler {
 	r := chi.NewRouter()
 	policy := authz.NewPolicy(db, authMode)
 	tokenHandler := newTokenHandler(db, eventHub, authMode, policy)
 	requestHandler := newRequestHandler(db, policy)
-	captureHandler := newCaptureHandler(db, eventHub)
+	captureHandler := newCaptureHandler(db, eventHub, w)
 	eventHandler := newEventHandler(db, eventHub, policy)
 
 	authH := newAuthHandler(authService, authMode)
 	grantH := newGrantHandler(db, policy)
 	adminH := newAdminHandler(db)
+	actionH := newActionHandler(db, policy)
+	exportH := newExportHandler(db, policy)
 
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
@@ -69,6 +72,15 @@ func NewRouter(db *store.Store, eventHub *hub.Hub, authMode string, authService 
 			r.Get("/{tokenId}/requests/{requestId}", requestHandler.getRequest)
 			r.Get("/{tokenId}/requests/{requestId}/raw", requestHandler.getRawRequest)
 			r.Delete("/{tokenId}/requests/{requestId}", requestHandler.deleteRequest)
+			r.Get("/{tokenId}/requests/export.csv", exportH.exportCSV)
+			r.Get("/{tokenId}/requests/export.json", exportH.exportJSON)
+
+			// Action management routes
+			r.Get("/{tokenId}/actions", actionH.listActions)
+			r.Post("/{tokenId}/actions", actionH.createAction)
+			r.Put("/{tokenId}/actions/order", actionH.reorderActions)
+			r.Put("/{tokenId}/actions/{actionId}", actionH.updateAction)
+			r.Delete("/{tokenId}/actions/{actionId}", actionH.deleteAction)
 
 			// Grant management routes
 			if authMode != "none" {
@@ -96,8 +108,9 @@ func NewRouter(db *store.Store, eventHub *hub.Hub, authMode string, authService 
 	}
 
 	// Webhook capture is restricted to UUID-like first path segments so SPA routes still fall through.
-	r.HandleFunc("/{tokenId:[0-9a-fA-F-]{36}}", captureHandler.capture)
-	r.HandleFunc("/{tokenId:[0-9a-fA-F-]{36}}/*", captureHandler.capture)
+	rlMiddleware := rateLimitMiddleware(db)
+	r.With(rlMiddleware).HandleFunc("/{tokenId:[0-9a-fA-F-]{36}}", captureHandler.capture)
+	r.With(rlMiddleware).HandleFunc("/{tokenId:[0-9a-fA-F-]{36}}/*", captureHandler.capture)
 	r.Handle("/*", spaHandler(staticFS))
 
 	return r

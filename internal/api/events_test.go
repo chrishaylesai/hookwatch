@@ -57,7 +57,7 @@ func TestEventsEndpointStreamsRequestCreated(t *testing.T) {
 
 	time.Sleep(20 * time.Millisecond)
 
-	router := NewRouter(db, eventHub, authModeNone, nil)
+	router := NewRouter(db, eventHub, authModeNone, nil, nil)
 	captureReq := httptest.NewRequest(http.MethodPost, "/"+tokenID+"/incoming", strings.NewReader(`{"ok":true}`))
 	captureReq.Header.Set("Content-Type", "application/json")
 	captureRec := httptest.NewRecorder()

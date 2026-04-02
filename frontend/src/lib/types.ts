@@ -11,6 +11,7 @@ export type TokenResponse = {
 	max_requests: number;
 	timeout: number;
 	cors: boolean;
+	rate_limit: number;
 	created_at: string;
 	updated_at: string;
 	expires_at: string;
@@ -28,6 +29,7 @@ export type RequestResponse = {
 	headers: Record<string, unknown>;
 	form_data: Record<string, unknown>;
 	url: string;
+	size: number;
 	created_at: string;
 };
 
@@ -81,4 +83,57 @@ export type AdminUser = {
 	oidc_provider?: string;
 	created_at: string;
 	updated_at: string;
+};
+
+export type Action = {
+	uuid: string;
+	token_id: string;
+	type: 'forward' | 'filter' | 'delay' | 'transform';
+	config: ForwardConfig | FilterConfig | DelayConfig | TransformConfig;
+	sort_order: number;
+	enabled: boolean;
+	created_at: string;
+	updated_at: string;
+};
+
+export type ForwardConfig = {
+	url: string;
+	method?: string;
+	headers?: Record<string, string>;
+	timeout?: number;
+};
+
+export type FilterConfig = {
+	field: string;
+	operator: 'equals' | 'contains' | 'matches' | 'exists';
+	value?: string;
+	negate?: boolean;
+};
+
+export type DelayConfig = {
+	duration_ms: number;
+};
+
+export type TransformConfig = {
+	status?: number;
+	content_type?: string;
+	body?: string;
+};
+
+export type ActionLog = {
+	uuid: string;
+	action_id: string;
+	request_id: string;
+	status: 'pending' | 'running' | 'success' | 'failed' | 'skipped';
+	result: Record<string, unknown>;
+	started_at?: string;
+	completed_at?: string;
+};
+
+export type ActionListResponse = {
+	data: Action[];
+};
+
+export type ActionCompletedEvent = {
+	action_log: ActionLog;
 };

@@ -39,6 +39,7 @@ type tokenPayload struct {
 	LegacyCORSEnabled  *bool   `json:"cors_enabled"`
 	ReceiveMode        *string `json:"receive_mode"`
 	ViewMode           *string `json:"view_mode"`
+	RateLimit          *int    `json:"rate_limit"`
 }
 
 type tokenResponse struct {
@@ -54,6 +55,7 @@ type tokenResponse struct {
 	MaxRequests         int       `json:"max_requests"`
 	Timeout             int       `json:"timeout"`
 	CORS                bool      `json:"cors"`
+	RateLimit           int       `json:"rate_limit"`
 	CreatedAt           time.Time `json:"created_at"`
 	UpdatedAt           time.Time `json:"updated_at"`
 	ExpiresAt           time.Time `json:"expires_at"`
@@ -355,6 +357,9 @@ func applyTokenPayload(token *models.Token, payload tokenPayload) {
 	if payload.ViewMode != nil {
 		token.ViewMode = *payload.ViewMode
 	}
+	if payload.RateLimit != nil {
+		token.RateLimit = *payload.RateLimit
+	}
 }
 
 func parseTokenListParams(r *http.Request) (store.TokenListParams, error) {
@@ -422,6 +427,7 @@ func toTokenResponse(token *models.Token, receiveSecret *string) tokenResponse {
 		MaxRequests:         token.MaxRequests,
 		Timeout:             token.Timeout,
 		CORS:                token.CORS,
+		RateLimit:           token.RateLimit,
 		CreatedAt:           token.CreatedAt,
 		UpdatedAt:           token.UpdatedAt,
 		ExpiresAt:           token.ExpiresAt,

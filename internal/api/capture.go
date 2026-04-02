@@ -17,6 +17,7 @@ import (
 	"github.com/chrishaylesai/hookwatch/internal/hub"
 	"github.com/chrishaylesai/hookwatch/internal/models"
 	"github.com/chrishaylesai/hookwatch/internal/store"
+	"github.com/chrishaylesai/hookwatch/internal/worker"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -24,6 +25,7 @@ import (
 type captureHandler struct {
 	store    *store.Store
 	eventHub *hub.Hub
+	worker   *worker.Worker
 }
 
 var captureCORSHeaders = map[string]string{
@@ -33,10 +35,11 @@ var captureCORSHeaders = map[string]string{
 	"Access-Control-Expose-Headers": "Content-Length,Content-Range,X-Request-Id,X-Token-Id",
 }
 
-func newCaptureHandler(db *store.Store, eventHub *hub.Hub) *captureHandler {
+func newCaptureHandler(db *store.Store, eventHub *hub.Hub, w *worker.Worker) *captureHandler {
 	return &captureHandler{
 		store:    db,
 		eventHub: eventHub,
+		worker:   w,
 	}
 }
 
@@ -106,6 +109,7 @@ func (h *captureHandler) capture(w http.ResponseWriter, r *http.Request) {
 		Headers:   headersJSON,
 		FormData:  formJSON,
 		URL:       absoluteURL(r, sanitizedQuery),
+		Size:      len(body),
 		CreatedAt: now,
 	}
 
@@ -121,6 +125,10 @@ func (h *captureHandler) capture(w http.ResponseWriter, r *http.Request) {
 	total, err := h.store.CountRequestsByToken(r.Context(), tokenID)
 	if err == nil {
 		publishRequestCreated(h.eventHub, tokenID, record, total)
+	}
+
+	if h.worker != nil {
+		go h.worker.ExecuteActions(tokenID, record)
 	}
 
 	if token.Timeout > 0 {

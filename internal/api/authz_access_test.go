@@ -33,7 +33,7 @@ func TestCreateTokenAssignsOwnerForAuthenticatedUser(t *testing.T) {
 
 	db := newTestStore(t)
 	user := createAPIUser(t, db, "owner-1", "owner@example.com", "user")
-	router := NewRouter(db, hub.New(), "local", &fakeAuthService{})
+	router := NewRouter(db, hub.New(), "local", &fakeAuthService{}, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/tokens", bytes.NewReader([]byte(`{"view_mode":"private"}`)))
 	req = requestWithUser(req, user)
@@ -276,7 +276,7 @@ func newPrivateTokenAccessFixture(t *testing.T) *privateTokenAccessFixture {
 	t.Helper()
 
 	db := newTestStore(t)
-	now := time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
 	owner := createAPIUser(t, db, "owner-1", "owner@example.com", "user")
 	viewer := createAPIUser(t, db, "viewer-1", "viewer@example.com", "user")
 	editor := createAPIUser(t, db, "editor-1", "editor@example.com", "user")
@@ -348,7 +348,7 @@ func newPrivateTokenAccessFixture(t *testing.T) *privateTokenAccessFixture {
 
 	return &privateTokenAccessFixture{
 		db:      db,
-		router:  NewRouter(db, hub.New(), "local", &fakeAuthService{}),
+		router:  NewRouter(db, hub.New(), "local", &fakeAuthService{}, nil),
 		token:   token,
 		request: request,
 		owner:   owner,

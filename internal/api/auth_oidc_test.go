@@ -107,7 +107,7 @@ func TestRouterUsesModeSpecificAuthRoutes(t *testing.T) {
 		loginSession: &models.Session{ID: "session-1"},
 	}
 
-	oidcRouter := NewRouter(db, hub.New(), "oidc", authSvc)
+	oidcRouter := NewRouter(db, hub.New(), "oidc", authSvc, nil)
 	oidcReq := httptest.NewRequest(http.MethodGet, "/api/auth/oidc/authorize", nil)
 	oidcRec := httptest.NewRecorder()
 	oidcRouter.ServeHTTP(oidcRec, oidcReq)
@@ -123,7 +123,7 @@ func TestRouterUsesModeSpecificAuthRoutes(t *testing.T) {
 		t.Fatalf("oidc login status = %d, want %d", loginRec.Code, http.StatusNotFound)
 	}
 
-	localRouter := NewRouter(db, hub.New(), "local", authSvc)
+	localRouter := NewRouter(db, hub.New(), "local", authSvc, nil)
 	localLoginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader([]byte(`{"email":"user@example.com","password":"password123"}`)))
 	localLoginReq.Header.Set("Content-Type", "application/json")
 	localLoginRec := httptest.NewRecorder()

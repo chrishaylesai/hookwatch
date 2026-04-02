@@ -46,6 +46,9 @@ type RequestListParams struct {
 	Order  string
 	Method string
 	IP     string
+	Search string
+	Since  time.Time
+	Until  time.Time
 }
 
 // RequestPage is a paginated request result set.
@@ -176,6 +179,36 @@ func (s *Store) migrate() error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_grants_token ON hook_grants(token_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_grants_user ON hook_grants(user_id)`,
+		`CREATE TABLE IF NOT EXISTS actions (
+			uuid TEXT PRIMARY KEY,
+			token_id TEXT NOT NULL REFERENCES tokens(uuid) ON DELETE CASCADE,
+			type TEXT NOT NULL,
+			config TEXT NOT NULL DEFAULT '{}',
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_actions_token_order ON actions(token_id, sort_order)`,
+		`CREATE TABLE IF NOT EXISTS action_logs (
+			uuid TEXT PRIMARY KEY,
+			action_id TEXT NOT NULL REFERENCES actions(uuid) ON DELETE CASCADE,
+			request_id TEXT NOT NULL REFERENCES requests(uuid) ON DELETE CASCADE,
+			status TEXT NOT NULL DEFAULT 'pending',
+			result TEXT NOT NULL DEFAULT '{}',
+			started_at DATETIME,
+			completed_at DATETIME
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_action_logs_request ON action_logs(request_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_action_logs_action ON action_logs(action_id)`,
+		`CREATE TABLE IF NOT EXISTS rate_limits (
+			ip TEXT NOT NULL,
+			token_id TEXT NOT NULL,
+			window_start DATETIME NOT NULL,
+			request_count INTEGER NOT NULL DEFAULT 1,
+			PRIMARY KEY (ip, token_id, window_start)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_rate_limits_window ON rate_limits(window_start)`,
 	}
 
 	for _, q := range queries {
@@ -199,6 +232,15 @@ func (s *Store) migrate() error {
 	if err := sqlitex.ExecuteTransient(conn, `CREATE INDEX IF NOT EXISTS idx_tokens_expires_at ON tokens(expires_at)`, nil); err != nil {
 		return fmt.Errorf("create token expiry index: %w", err)
 	}
+	if err := ensureRequestSizeColumn(conn); err != nil {
+		return fmt.Errorf("ensure request size column: %w", err)
+	}
+	if err := backfillRequestSize(conn); err != nil {
+		return fmt.Errorf("backfill request size: %w", err)
+	}
+	if err := ensureTokenRateLimitColumn(conn); err != nil {
+		return fmt.Errorf("ensure token rate_limit column: %w", err)
+	}
 
 	return nil
 }
@@ -216,8 +258,8 @@ func (s *Store) CreateToken(ctx context.Context, token *models.Token) error {
 	query := `INSERT INTO tokens (
 		uuid, owner_id, receive_mode, view_mode, receive_secret_hash, receive_secret_prefix,
 		default_status, default_content, default_content_type, max_requests, timeout, cors,
-		created_at, updated_at, expires_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		created_at, updated_at, expires_at, rate_limit
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	err = sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
 		Args: []any{
@@ -225,7 +267,7 @@ func (s *Store) CreateToken(ctx context.Context, token *models.Token) error {
 			nullableString(token.ReceiveSecretHash), nullableString(token.ReceiveSecretPrefix),
 			token.DefaultStatus, token.DefaultContent, token.DefaultContentType, token.MaxRequests,
 			token.Timeout, boolToSQLite(token.CORS), formatTime(token.CreatedAt), formatTime(token.UpdatedAt),
-			formatTime(token.ExpiresAt),
+			formatTime(token.ExpiresAt), token.RateLimit,
 		},
 	})
 	if err != nil {
@@ -246,7 +288,7 @@ func (s *Store) GetToken(ctx context.Context, uuid string) (*models.Token, error
 	query := `SELECT
 		uuid, owner_id, receive_mode, view_mode, receive_secret_hash, receive_secret_prefix,
 		default_status, default_content, default_content_type, max_requests, timeout, cors,
-		created_at, updated_at, expires_at
+		created_at, updated_at, expires_at, rate_limit
 	FROM tokens WHERE uuid = ?`
 
 	var token *models.Token
@@ -286,7 +328,7 @@ func (s *Store) ListTokens(ctx context.Context, params TokenListParams) (*TokenP
 	query := fmt.Sprintf(`SELECT
 		uuid, owner_id, receive_mode, view_mode, receive_secret_hash, receive_secret_prefix,
 		default_status, default_content, default_content_type, max_requests, timeout, cors,
-		created_at, updated_at, expires_at
+		created_at, updated_at, expires_at, rate_limit
 	FROM tokens
 	WHERE expires_at > ?
 	ORDER BY %s %s
@@ -329,14 +371,15 @@ func (s *Store) UpdateToken(ctx context.Context, token *models.Token) error {
 	query := `UPDATE tokens SET
 		receive_mode = ?, view_mode = ?, receive_secret_hash = ?, receive_secret_prefix = ?,
 		default_status = ?, default_content = ?, default_content_type = ?, max_requests = ?, timeout = ?, cors = ?,
-		updated_at = ?, expires_at = ?
+		updated_at = ?, expires_at = ?, rate_limit = ?
 	WHERE uuid = ?`
 
 	err = sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
 		Args: []any{
 			token.ReceiveMode, token.ViewMode, nullableString(token.ReceiveSecretHash), nullableString(token.ReceiveSecretPrefix),
 			token.DefaultStatus, token.DefaultContent, token.DefaultContentType, token.MaxRequests,
-			token.Timeout, boolToSQLite(token.CORS), formatTime(token.UpdatedAt), formatTime(token.ExpiresAt), token.UUID,
+			token.Timeout, boolToSQLite(token.CORS), formatTime(token.UpdatedAt), formatTime(token.ExpiresAt),
+			token.RateLimit, token.UUID,
 		},
 	})
 	if err != nil {
@@ -379,8 +422,8 @@ func (s *Store) CreateRequest(ctx context.Context, req *models.Request) error {
 	defer s.pool.Put(conn)
 
 	query := `INSERT INTO requests (
-		uuid, token_id, ip, hostname, method, user_agent, content, query, headers, form_data, url, created_at
-	) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+		uuid, token_id, ip, hostname, method, user_agent, content, query, headers, form_data, url, size, created_at
+	) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 	WHERE EXISTS (
 		SELECT 1
 		FROM tokens
@@ -391,7 +434,7 @@ func (s *Store) CreateRequest(ctx context.Context, req *models.Request) error {
 	err = sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
 		Args: []any{
 			req.UUID, req.TokenID, req.IP, req.Hostname, req.Method, req.UserAgent,
-			req.Content, req.Query, req.Headers, req.FormData, req.URL, formatTime(req.CreatedAt),
+			req.Content, req.Query, req.Headers, req.FormData, req.URL, req.Size, formatTime(req.CreatedAt),
 			req.TokenID, req.TokenID,
 		},
 	})
@@ -421,7 +464,7 @@ func (s *Store) GetRequest(ctx context.Context, tokenID, requestID string) (*mod
 	defer s.pool.Put(conn)
 
 	query := `SELECT
-		uuid, token_id, ip, hostname, method, user_agent, content, query, headers, form_data, url, created_at
+		uuid, token_id, ip, hostname, method, user_agent, content, query, headers, form_data, url, size, created_at
 	FROM requests
 	WHERE token_id = ? AND uuid = ?`
 
@@ -472,6 +515,18 @@ func (s *Store) ListRequestsByToken(ctx context.Context, tokenID string, params 
 		whereClauses = append(whereClauses, "ip = ?")
 		args = append(args, params.IP)
 	}
+	if params.Search != "" {
+		whereClauses = append(whereClauses, "content LIKE ?")
+		args = append(args, "%"+params.Search+"%")
+	}
+	if !params.Since.IsZero() {
+		whereClauses = append(whereClauses, "created_at >= ?")
+		args = append(args, formatTime(params.Since))
+	}
+	if !params.Until.IsZero() {
+		whereClauses = append(whereClauses, "created_at <= ?")
+		args = append(args, formatTime(params.Until))
+	}
 
 	whereSQL := strings.Join(whereClauses, " AND ")
 	total, err := queryCount(conn, "SELECT COUNT(*) FROM requests WHERE "+whereSQL, args)
@@ -480,7 +535,7 @@ func (s *Store) ListRequestsByToken(ctx context.Context, tokenID string, params 
 	}
 
 	query := fmt.Sprintf(`SELECT
-		uuid, token_id, ip, hostname, method, user_agent, content, query, headers, form_data, url, created_at
+		uuid, token_id, ip, hostname, method, user_agent, content, query, headers, form_data, url, size, created_at
 	FROM requests
 	WHERE %s
 	ORDER BY %s %s
@@ -624,6 +679,7 @@ func (s *Store) scanToken(stmt *sqlite.Stmt) (*models.Token, error) {
 		MaxRequests:        stmt.ColumnInt(9),
 		Timeout:            stmt.ColumnInt(10),
 		CORS:               stmt.ColumnInt(11) != 0,
+		RateLimit:          stmt.ColumnInt(15),
 	}
 
 	if !stmt.ColumnIsNull(1) {
@@ -673,10 +729,11 @@ func scanRequest(stmt *sqlite.Stmt) (*models.Request, error) {
 		Headers:   stmt.ColumnText(8),
 		FormData:  stmt.ColumnText(9),
 		URL:       stmt.ColumnText(10),
+		Size:      stmt.ColumnInt(11),
 	}
 
 	var err error
-	req.CreatedAt, err = parseTime(stmt.ColumnText(11))
+	req.CreatedAt, err = parseTime(stmt.ColumnText(12))
 	if err != nil {
 		return nil, fmt.Errorf("parse request created_at: %w", err)
 	}
@@ -889,4 +946,105 @@ func (s *Store) backfillTokenMaxRequests(conn *sqlite.Conn) error {
 	return sqlitex.ExecuteTransient(conn, "UPDATE tokens SET max_requests = ? WHERE max_requests IS NULL OR max_requests = 0", &sqlitex.ExecOptions{
 		Args: []any{s.config.MaxRequests},
 	})
+}
+
+// StreamRequestsByToken iterates over all matching requests without pagination, calling fn for each row.
+func (s *Store) StreamRequestsByToken(ctx context.Context, tokenID string, params RequestListParams, fn func(*models.Request) error) error {
+	conn, err := s.take(ctx)
+	if err != nil {
+		return err
+	}
+	defer s.pool.Put(conn)
+
+	exists, err := tokenExists(conn, tokenID)
+	if err != nil {
+		return fmt.Errorf("check token exists: %w", err)
+	}
+	if !exists {
+		return ErrNotFound
+	}
+
+	whereClauses := []string{"token_id = ?"}
+	args := []any{tokenID}
+
+	if params.Method != "" {
+		whereClauses = append(whereClauses, "method = ?")
+		args = append(args, strings.ToUpper(params.Method))
+	}
+	if params.IP != "" {
+		whereClauses = append(whereClauses, "ip = ?")
+		args = append(args, params.IP)
+	}
+	if params.Search != "" {
+		whereClauses = append(whereClauses, "content LIKE ?")
+		args = append(args, "%"+params.Search+"%")
+	}
+	if !params.Since.IsZero() {
+		whereClauses = append(whereClauses, "created_at >= ?")
+		args = append(args, formatTime(params.Since))
+	}
+	if !params.Until.IsZero() {
+		whereClauses = append(whereClauses, "created_at <= ?")
+		args = append(args, formatTime(params.Until))
+	}
+
+	whereSQL := strings.Join(whereClauses, " AND ")
+	query := fmt.Sprintf(`SELECT
+		uuid, token_id, ip, hostname, method, user_agent, content, query, headers, form_data, url, size, created_at
+	FROM requests
+	WHERE %s
+	ORDER BY created_at DESC`, whereSQL)
+
+	return sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
+		Args: args,
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			req, scanErr := scanRequest(stmt)
+			if scanErr != nil {
+				return scanErr
+			}
+			return fn(req)
+		},
+	})
+}
+
+func ensureRequestSizeColumn(conn *sqlite.Conn) error {
+	var hasSize bool
+	err := sqlitex.ExecuteTransient(conn, "PRAGMA table_info(requests)", &sqlitex.ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			if stmt.ColumnText(1) == "size" {
+				hasSize = true
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if hasSize {
+		return nil
+	}
+	return sqlitex.ExecuteTransient(conn, "ALTER TABLE requests ADD COLUMN size INTEGER NOT NULL DEFAULT 0", nil)
+}
+
+func backfillRequestSize(conn *sqlite.Conn) error {
+	return sqlitex.ExecuteTransient(conn, "UPDATE requests SET size = LENGTH(content) WHERE size = 0 AND content != ''", nil)
+}
+
+func ensureTokenRateLimitColumn(conn *sqlite.Conn) error {
+	var hasRateLimit bool
+	err := sqlitex.ExecuteTransient(conn, "PRAGMA table_info(tokens)", &sqlitex.ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			if stmt.ColumnText(1) == "rate_limit" {
+				hasRateLimit = true
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if hasRateLimit {
+		return nil
+	}
+	return sqlitex.ExecuteTransient(conn, "ALTER TABLE tokens ADD COLUMN rate_limit INTEGER NOT NULL DEFAULT 0", nil)
 }

@@ -1,13 +1,20 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import { requestToCurl } from '$lib/curl';
 	import Badge from '$lib/components/ui/badge.svelte';
 	import Button from '$lib/components/ui/button.svelte';
 	import Card from '$lib/components/ui/card.svelte';
 	import Modal from '$lib/components/ui/modal.svelte';
 	import RequestBody from '$lib/components/request-body.svelte';
+	import RequestFilters from '$lib/components/request-filters.svelte';
+	import ActionPipeline from '$lib/components/actions/action-pipeline.svelte';
 	import { getAuth } from '$lib/auth.svelte';
+	import { formatBytes } from '$lib/utils';
 	import type {
+		ActionCompletedEvent,
+		ActionLog,
 		HookGrant,
 		RequestCreatedEvent,
 		RequestListResponse,
@@ -26,6 +33,7 @@
 		defaultContent: string;
 		timeout: string;
 		cors: boolean;
+		rateLimit: string;
 	};
 
 	type AccessSettingsDraft = {
@@ -56,7 +64,8 @@
 		defaultContentType: '',
 		defaultContent: '',
 		timeout: '0',
-		cors: false
+		cors: false,
+		rateLimit: '0'
 	});
 	let accessSettingsDraft = $state<AccessSettingsDraft>({
 		receiveMode: 'public',
@@ -71,6 +80,19 @@
 	let grantRole = $state<'viewer' | 'editor'>('viewer');
 	let grantError = $state('');
 	let grantAdding = $state(false);
+
+	// Active tab: 'requests' or 'actions'
+	let activeTab = $state<'requests' | 'actions'>('requests');
+
+	// Action logs for selected request
+	let actionLogs = $state<ActionLog[]>([]);
+
+	// Filter state
+	let filterMethod = $state('');
+	let filterSearch = $state('');
+	let filterIP = $state('');
+	let filterSince = $state('');
+	let filterUntil = $state('');
 
 	const currentToken = $derived(tokenOverride ?? data.token);
 	const requestList = $derived(requestListOverride ?? data.requestList);
@@ -112,7 +134,8 @@
 			defaultContentType: source.default_content_type,
 			defaultContent: source.default_content,
 			timeout: String(source.timeout),
-			cors: source.cors
+			cors: source.cors,
+			rateLimit: String(source.rate_limit ?? 0)
 		};
 	}
 
@@ -188,6 +211,13 @@
 			if (payload.token.receive_mode === 'public') {
 				receiveSecretOverride = null;
 			}
+		});
+
+		stream.addEventListener('action.completed', (event) => {
+			const payload = parseEventData<ActionCompletedEvent>(event);
+			if (!payload) return;
+			liveUpdatesState = 'live';
+			actionLogs = [...actionLogs.filter((l) => l.uuid !== payload.action_log.uuid), payload.action_log];
 		});
 
 		stream.addEventListener('token.deleted', (event) => {
@@ -553,7 +583,8 @@
 					default_content_type: contentType,
 					default_content: tokenSettingsDraft.defaultContent,
 					timeout,
-					cors: tokenSettingsDraft.cors
+					cors: tokenSettingsDraft.cors,
+					rate_limit: Number.parseInt(tokenSettingsDraft.rateLimit, 10) || 0
 				})
 			});
 
@@ -667,6 +698,28 @@
 			rotateSecretState = 'error';
 			accessSettingsError = 'Failed to rotate receive secret.';
 		}
+	}
+
+	function handleFilterChange() {
+		const params = new URLSearchParams();
+		params.set('page', '1');
+		if (filterMethod) params.set('method', filterMethod);
+		if (filterSearch) params.set('search', filterSearch);
+		if (filterIP) params.set('ip', filterIP);
+		if (filterSince) params.set('since', new Date(filterSince).toISOString());
+		if (filterUntil) params.set('until', new Date(filterUntil).toISOString());
+		goto(`?${params.toString()}#requests`, { replaceState: true, invalidateAll: true });
+	}
+
+	function exportUrl(format: 'csv' | 'json'): string {
+		const params = new URLSearchParams();
+		if (filterMethod) params.set('method', filterMethod);
+		if (filterSearch) params.set('search', filterSearch);
+		if (filterIP) params.set('ip', filterIP);
+		if (filterSince) params.set('since', new Date(filterSince).toISOString());
+		if (filterUntil) params.set('until', new Date(filterUntil).toISOString());
+		const qs = params.toString();
+		return `/api/tokens/${currentToken.uuid}/requests/export.${format}${qs ? `?${qs}` : ''}`;
 	}
 </script>
 
@@ -859,6 +912,8 @@
 						<h2 class="mt-2 text-2xl font-semibold">Captured traffic</h2>
 					</div>
 					<div class="flex flex-wrap items-center gap-2 sm:justify-end">
+						<a href={exportUrl('csv')} download class="text-xs font-semibold text-[var(--accent-strong)] hover:underline">CSV</a>
+						<a href={exportUrl('json')} download class="text-xs font-semibold text-[var(--accent-strong)] hover:underline">JSON</a>
 						<Badge tone="muted">{requestList.total} total</Badge>
 						<Badge
 							tone="muted"
@@ -870,6 +925,15 @@
 						</Badge>
 					</div>
 				</div>
+
+				<RequestFilters
+					bind:method={filterMethod}
+					bind:search={filterSearch}
+					bind:ip={filterIP}
+					bind:since={filterSince}
+					bind:until={filterUntil}
+					onchange={handleFilterChange}
+				/>
 
 				{#if pendingNewerRequests > 0}
 					<div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4">
@@ -915,9 +979,14 @@
 
 								<div class="mt-4 flex flex-col items-start gap-1 text-sm text-[var(--muted-foreground)] sm:flex-row sm:items-center sm:justify-between sm:gap-3">
 									<span>{formatListTimestamp(request.created_at)}</span>
-									<span class="max-w-full truncate font-mono text-xs sm:max-w-[11rem]">
-										{request.ip}
-									</span>
+									<div class="flex items-center gap-2">
+										{#if request.size > 0}
+											<span class="text-xs">{formatBytes(request.size)}</span>
+										{/if}
+										<span class="max-w-full truncate font-mono text-xs sm:max-w-[11rem]">
+											{request.ip}
+										</span>
+									</div>
 								</div>
 							</a>
 						{/each}
@@ -959,7 +1028,26 @@
 
 			<section class="space-y-6">
 
-			{#if selectedRequest}
+			<div class="flex gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)] p-1">
+				<button
+					type="button"
+					onclick={() => (activeTab = 'requests')}
+					class="flex-1 rounded-md px-4 py-2 text-sm font-medium transition {activeTab === 'requests' ? 'bg-[var(--accent-soft)] text-[var(--foreground)]' : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)]'}"
+				>
+					Request detail
+				</button>
+				<button
+					type="button"
+					onclick={() => (activeTab = 'actions')}
+					class="flex-1 rounded-md px-4 py-2 text-sm font-medium transition {activeTab === 'actions' ? 'bg-[var(--accent-soft)] text-[var(--foreground)]' : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)]'}"
+				>
+					Actions
+				</button>
+			</div>
+
+			{#if activeTab === 'actions'}
+				<ActionPipeline tokenId={currentToken.uuid} {actionLogs} />
+			{:else if selectedRequest}
 				<Card class="space-y-5">
 					<div class="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
 						<div>
@@ -1020,6 +1108,12 @@
 								User agent
 							</p>
 							<p class="mt-2 line-clamp-2 text-sm">{selectedRequest.user_agent}</p>
+						</div>
+						<div class="rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-4">
+							<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+								Size
+							</p>
+							<p class="mt-2 text-sm">{formatBytes(selectedRequest.size)}</p>
 						</div>
 					</div>
 
@@ -1179,6 +1273,19 @@
 			<label class="flex items-center gap-3 self-end rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3">
 				<input type="checkbox" bind:checked={tokenSettingsDraft.cors} />
 				<span class="text-sm">Enable CORS headers on the default response</span>
+			</label>
+
+			<label class="space-y-2">
+				<span class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+					Rate limit
+				</span>
+				<input
+					class="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
+					type="number"
+					min="0"
+					bind:value={tokenSettingsDraft.rateLimit}
+				/>
+				<p class="text-xs text-[var(--muted-foreground)]">Requests per minute per IP. `0` = unlimited.</p>
 			</label>
 		</div>
 

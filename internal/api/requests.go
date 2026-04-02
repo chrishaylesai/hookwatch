@@ -31,6 +31,7 @@ type requestResponse struct {
 	Headers   map[string]any `json:"headers"`
 	FormData  map[string]any `json:"form_data"`
 	URL       string         `json:"url"`
+	Size      int            `json:"size"`
 	CreatedAt string         `json:"created_at"`
 }
 
@@ -51,6 +52,9 @@ type requestListQuery struct {
 	Order   string
 	Method  string
 	IP      string
+	Search  string
+	Since   time.Time
+	Until   time.Time
 }
 
 func newRequestHandler(db *store.Store, policy *authz.Policy) *requestHandler {
@@ -95,6 +99,9 @@ func (h *requestHandler) listRequests(w http.ResponseWriter, r *http.Request) {
 		Order:  params.Order,
 		Method: params.Method,
 		IP:     params.IP,
+		Search: params.Search,
+		Since:  params.Since,
+		Until:  params.Until,
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -330,6 +337,22 @@ func parseRequestListQuery(r *http.Request) (requestListQuery, error) {
 		order = "desc"
 	}
 
+	var since, until time.Time
+	if raw := strings.TrimSpace(query.Get("since")); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return requestListQuery{}, errors.New("invalid since: must be RFC3339 format")
+		}
+		since = t
+	}
+	if raw := strings.TrimSpace(query.Get("until")); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return requestListQuery{}, errors.New("invalid until: must be RFC3339 format")
+		}
+		until = t
+	}
+
 	return requestListQuery{
 		Page:    page,
 		PerPage: perPage,
@@ -339,6 +362,9 @@ func parseRequestListQuery(r *http.Request) (requestListQuery, error) {
 		Order:   order,
 		Method:  strings.TrimSpace(query.Get("method")),
 		IP:      strings.TrimSpace(query.Get("ip")),
+		Search:  strings.TrimSpace(query.Get("search")),
+		Since:   since,
+		Until:   until,
 	}, nil
 }
 
@@ -355,6 +381,7 @@ func toRequestResponse(req *models.Request) requestResponse {
 		Headers:   decodeJSONMap(req.Headers),
 		FormData:  decodeJSONMap(req.FormData),
 		URL:       req.URL,
+		Size:      req.Size,
 		CreatedAt: req.CreatedAt.UTC().Format(time.RFC3339),
 	}
 }

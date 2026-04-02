@@ -27,8 +27,15 @@ export const load: PageLoad = async ({ fetch, params, url }) => {
 	}
 
 	const page = parsePositiveInt(url.searchParams.get('page'), 1);
+	const filterParams = new URLSearchParams();
+	filterParams.set('page', String(page));
+	filterParams.set('per_page', '12');
+	for (const key of ['method', 'ip', 'search', 'since', 'until']) {
+		const val = url.searchParams.get(key);
+		if (val) filterParams.set(key, val);
+	}
 	const requestsResponse = await fetch(
-		`/api/tokens/${params.tokenId}/requests?page=${page}&per_page=12`
+		`/api/tokens/${params.tokenId}/requests?${filterParams.toString()}`
 	);
 
 	if (!requestsResponse.ok) {
