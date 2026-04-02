@@ -3,3 +3,5 @@ hookwatch_bin
 .gocache
 /tmp_data
 /dist
+.vscode/
+**/.vscode/
