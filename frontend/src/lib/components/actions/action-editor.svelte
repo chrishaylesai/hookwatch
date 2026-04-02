@@ -106,11 +106,8 @@
 	}
 </script>
 
-<Modal onclose={onclose}>
+<Modal open={true} title="{isEditing ? 'Edit' : 'Add'} {actionType} action" onclose={onclose}>
 	<form onsubmit={handleSubmit} class="w-full max-w-lg space-y-5">
-		<div>
-			<h2 class="text-xl font-semibold">{isEditing ? 'Edit' : 'Add'} {actionType} action</h2>
-		</div>
 
 		{#if actionType === 'forward'}
 			<div class="space-y-3">

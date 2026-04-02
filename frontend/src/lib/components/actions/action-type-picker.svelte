@@ -31,15 +31,8 @@
 	];
 </script>
 
-<Modal onclose={onclose}>
+<Modal open={true} title="Add action" description="Choose the type of action to add to the pipeline." onclose={onclose}>
 	<div class="w-full max-w-md space-y-5">
-		<div>
-			<h2 class="text-xl font-semibold">Add action</h2>
-			<p class="mt-1 text-sm text-[var(--muted-foreground)]">
-				Choose the type of action to add to the pipeline.
-			</p>
-		</div>
-
 		<div class="grid grid-cols-2 gap-3">
 			{#each types as t}
 				<button
