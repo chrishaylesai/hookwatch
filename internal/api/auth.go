@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/chrishaylesai/hookwatch/internal/auth"
@@ -10,11 +11,11 @@ import (
 )
 
 type authHandler struct {
-	authService *auth.Service
+	authService auth.Authenticator
 	authMode    string
 }
 
-func newAuthHandler(authService *auth.Service, authMode string) *authHandler {
+func newAuthHandler(authService auth.Authenticator, authMode string) *authHandler {
 	return &authHandler{
 		authService: authService,
 		authMode:    authMode,
@@ -130,6 +131,64 @@ func (h *authHandler) authInfo(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *authHandler) authorizeOIDC(w http.ResponseWriter, r *http.Request) {
+	flow, err := h.authService.StartOIDCAuth(baseURLFromRequest(r), r.URL.Query().Get("redirect"))
+	if err != nil {
+		if errors.Is(err, auth.ErrUnsupportedAuthMode) {
+			http.NotFound(w, r)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to start oidc login")
+		return
+	}
+
+	auth.SetOIDCFlowCookies(w, flow)
+	http.Redirect(w, r, flow.URL, http.StatusFound)
+}
+
+func (h *authHandler) callbackOIDC(w http.ResponseWriter, r *http.Request) {
+	state := strings.TrimSpace(r.URL.Query().Get("state"))
+	code := strings.TrimSpace(r.URL.Query().Get("code"))
+	if state == "" || code == "" {
+		writeError(w, http.StatusBadRequest, "missing oidc callback parameters")
+		return
+	}
+
+	expectedState := cookieValue(r, auth.OIDCStateCookieName)
+	expectedNonce := cookieValue(r, auth.OIDCNonceCookieName)
+	redirectPath := cookieValue(r, auth.OIDCRedirectCookieName)
+	redirectPath = sanitizeRedirectPath(redirectPath)
+	auth.ClearOIDCFlowCookies(w)
+
+	if expectedState == "" || expectedNonce == "" || state != expectedState {
+		redirectOIDCError(w, r, redirectPath, "oidc_failed")
+		return
+	}
+
+	_, session, err := h.authService.CompleteOIDCAuth(
+		r.Context(),
+		baseURLFromRequest(r),
+		code,
+		expectedNonce,
+		r.RemoteAddr,
+		r.UserAgent(),
+	)
+	if err != nil {
+		switch {
+		case errors.Is(err, auth.ErrOIDCEmailRequired):
+			redirectOIDCError(w, r, redirectPath, "email_required")
+		case errors.Is(err, auth.ErrOIDCAccountConflict):
+			redirectOIDCError(w, r, redirectPath, "account_conflict")
+		default:
+			redirectOIDCError(w, r, redirectPath, "oidc_failed")
+		}
+		return
+	}
+
+	auth.SetSessionCookie(w, session.ID)
+	http.Redirect(w, r, redirectPath, http.StatusFound)
+}
+
 func toUserResponse(u *models.User) userResponse {
 	return userResponse{
 		ID:          u.ID,
@@ -138,4 +197,49 @@ func toUserResponse(u *models.User) userResponse {
 		GlobalRole:  u.GlobalRole,
 		CreatedAt:   u.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
 	}
+}
+
+func redirectOIDCError(w http.ResponseWriter, r *http.Request, redirectPath, code string) {
+	values := url.Values{}
+	values.Set("error", code)
+	if redirectPath != "/" {
+		values.Set("redirect", redirectPath)
+	}
+
+	http.Redirect(w, r, "/login?"+values.Encode(), http.StatusFound)
+}
+
+func cookieValue(r *http.Request, name string) string {
+	cookie, err := r.Cookie(name)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(cookie.Value)
+}
+
+func sanitizeRedirectPath(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw[0] != '/' {
+		return "/"
+	}
+	if len(raw) > 1 && raw[1] == '/' {
+		return "/"
+	}
+	return raw
+}
+
+func baseURLFromRequest(r *http.Request) string {
+	scheme := "http"
+	if forwarded := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Proto"), ",")[0]); forwarded != "" {
+		scheme = forwarded
+	} else if r.TLS != nil {
+		scheme = "https"
+	}
+
+	host := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Host"), ",")[0])
+	if host == "" {
+		host = strings.TrimSpace(r.Host)
+	}
+
+	return scheme + "://" + host
 }

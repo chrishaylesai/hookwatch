@@ -16,7 +16,7 @@ import (
 )
 
 // NewRouter creates the HTTP router with all routes.
-func NewRouter(db *store.Store, eventHub *hub.Hub, authMode string, authService *auth.Service) http.Handler {
+func NewRouter(db *store.Store, eventHub *hub.Hub, authMode string, authService auth.Authenticator) http.Handler {
 	r := chi.NewRouter()
 	tokenHandler := newTokenHandler(db, eventHub, authMode)
 	requestHandler := newRequestHandler(db)
@@ -44,9 +44,14 @@ func NewRouter(db *store.Store, eventHub *hub.Hub, authMode string, authService 
 		r.Get("/auth/info", authH.authInfo)
 
 		// Auth routes (only when auth is enabled)
-		if authMode != "none" {
+		if authMode == "local" {
 			r.Post("/auth/register", authH.register)
 			r.Post("/auth/login", authH.login)
+			r.Post("/auth/logout", authH.logout)
+			r.Get("/auth/me", authH.me)
+		} else if authMode == "oidc" {
+			r.Get("/auth/oidc/authorize", authH.authorizeOIDC)
+			r.Get("/auth/oidc/callback", authH.callbackOIDC)
 			r.Post("/auth/logout", authH.logout)
 			r.Get("/auth/me", authH.me)
 		}

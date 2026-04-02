@@ -19,6 +19,9 @@
 		if (auth.loaded && !auth.authEnabled) {
 			goto('/');
 		}
+		if (auth.loaded && auth.authMode === 'oidc') {
+			goto('/login');
+		}
 		if (auth.loaded && auth.isAuthenticated) {
 			goto('/');
 		}

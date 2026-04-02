@@ -2,6 +2,10 @@
 
 Local run instructions for the `hookwatch` app.
 
+Additional docs:
+
+- [`docs/auth.md`](./docs/auth.md) for running the app in `none`, `local`, and `oidc` auth modes
+
 ## What It Runs
 
 HookWatch is a single Go server that serves:
@@ -96,6 +100,9 @@ Common flags:
 --data-dir ./data
 --auth-mode none
 --allow-registration=false
+--oidc-issuer=
+--oidc-client-id=
+--oidc-client-secret=
 --token-ttl 168h
 --max-requests 500
 --token-cleanup-interval 1h
@@ -108,6 +115,9 @@ HOOKWATCH_PORT=8080
 HOOKWATCH_DATA_DIR=./data
 HOOKWATCH_AUTH_MODE=none
 HOOKWATCH_ALLOW_REGISTRATION=false
+HOOKWATCH_OIDC_ISSUER=
+HOOKWATCH_OIDC_CLIENT_ID=
+HOOKWATCH_OIDC_CLIENT_SECRET=
 HOOKWATCH_TOKEN_TTL=168h
 HOOKWATCH_MAX_REQUESTS=500
 HOOKWATCH_TOKEN_CLEANUP_INTERVAL=1h
@@ -124,29 +134,11 @@ Defaults:
 
 ## Auth Modes For Local Use
 
-For quick local testing, use:
+See [`docs/auth.md`](./docs/auth.md) for complete run instructions and examples for:
 
-```bash
---auth-mode=none
-```
-
-If you want accounts locally, use:
-
-```bash
---auth-mode=local
-```
-
-Optional:
-
-```bash
---allow-registration=true
-```
-
-Behavior in `local` mode:
-
-- the first registered user is automatically made admin
-- the first user can register even if `--allow-registration=false`
-- later registrations require `--allow-registration=true`
+- `auth-mode=none`
+- `auth-mode=local`
+- `auth-mode=oidc`
 
 ## Quick Smoke Test
 

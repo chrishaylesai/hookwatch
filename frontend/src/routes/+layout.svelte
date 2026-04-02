@@ -128,7 +128,9 @@
 						</div>
 					{:else}
 						<Button href="/login" variant="ghost" size="sm">Sign in</Button>
-						<Button href="/register" size="sm">Register</Button>
+						{#if auth.authMode === 'local'}
+							<Button href="/register" size="sm">Register</Button>
+						{/if}
 					{/if}
 				</div>
 			</div>

@@ -2,9 +2,12 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/chrishaylesai/hookwatch/internal/models"
@@ -17,6 +20,7 @@ const (
 	SessionCookieName = "hookwatch_session"
 	SessionDuration   = 7 * 24 * time.Hour
 	bcryptCost        = 12
+	oidcFlowCookieTTL = 10 * time.Minute
 )
 
 var (
@@ -24,11 +28,41 @@ var (
 	ErrEmailTaken         = errors.New("auth: email already registered")
 	ErrRegistrationClosed = errors.New("auth: registration is not allowed")
 	ErrWeakPassword       = errors.New("auth: password must be at least 8 characters")
+	ErrUnsupportedAuthMode = errors.New("auth: operation not supported for current auth mode")
+	ErrOIDCEmailRequired   = errors.New("auth: oidc email claim is required")
+	ErrOIDCAccountConflict = errors.New("auth: oidc account conflicts with existing user")
+	ErrOIDCInvalidNonce    = errors.New("auth: invalid oidc nonce")
 )
 
 type contextKey string
 
 const userContextKey contextKey = "auth_user"
+
+const (
+	OIDCStateCookieName    = "hookwatch_oidc_state"
+	OIDCNonceCookieName    = "hookwatch_oidc_nonce"
+	OIDCRedirectCookieName = "hookwatch_oidc_redirect"
+)
+
+// OIDCAuthRequest describes a pending OIDC authorization flow.
+type OIDCAuthRequest struct {
+	URL          string
+	State        string
+	Nonce        string
+	RedirectPath string
+}
+
+// Authenticator is the common interface consumed by the API layer.
+type Authenticator interface {
+	SessionMiddleware(next http.Handler) http.Handler
+	Register(ctx context.Context, email, displayName, password string) (*models.User, error)
+	Login(ctx context.Context, email, password, ip, userAgent string) (*models.User, *models.Session, error)
+	Logout(ctx context.Context, sessionID string) error
+	ValidateSession(ctx context.Context, sessionID string) (*models.User, error)
+	StartOIDCAuth(baseURL, redirectPath string) (*OIDCAuthRequest, error)
+	CompleteOIDCAuth(ctx context.Context, baseURL, code, expectedNonce, ip, userAgent string) (*models.User, *models.Session, error)
+	RunSessionCleanup(ctx context.Context, interval time.Duration, logger *slog.Logger)
+}
 
 // UserFromContext retrieves the authenticated user from the request context.
 // Returns nil if no user is authenticated.
@@ -136,7 +170,7 @@ func (s *Service) Login(ctx context.Context, email, password, ip, userAgent stri
 		return nil, nil, ErrInvalidCredentials
 	}
 
-	session, err := s.createSession(ctx, user.ID, ip, userAgent)
+	session, err := createSession(ctx, s.store, user.ID, ip, userAgent)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -146,22 +180,12 @@ func (s *Service) Login(ctx context.Context, email, password, ip, userAgent stri
 
 // Logout deletes the session.
 func (s *Service) Logout(ctx context.Context, sessionID string) error {
-	return s.store.DeleteSession(ctx, sessionID)
+	return logoutSession(ctx, s.store, sessionID)
 }
 
 // ValidateSession looks up a session and returns the associated user.
 func (s *Service) ValidateSession(ctx context.Context, sessionID string) (*models.User, error) {
-	session, err := s.store.GetSession(ctx, sessionID)
-	if err != nil {
-		return nil, err
-	}
-
-	user, err := s.store.GetUser(ctx, session.UserID)
-	if err != nil {
-		return nil, err
-	}
-
-	return user, nil
+	return validateSession(ctx, s.store, sessionID)
 }
 
 // SetSessionCookie sets the session cookie on the response.
@@ -188,7 +212,7 @@ func ClearSessionCookie(w http.ResponseWriter) {
 	})
 }
 
-func (s *Service) createSession(ctx context.Context, userID, ip, userAgent string) (*models.Session, error) {
+func createSession(ctx context.Context, db *store.Store, userID, ip, userAgent string) (*models.Session, error) {
 	now := time.Now().UTC()
 	session := &models.Session{
 		ID:        uuid.NewString(),
@@ -199,11 +223,37 @@ func (s *Service) createSession(ctx context.Context, userID, ip, userAgent strin
 		UserAgent: userAgent,
 	}
 
-	if err := s.store.CreateSession(ctx, session); err != nil {
+	if err := db.CreateSession(ctx, session); err != nil {
 		return nil, err
 	}
 
 	return session, nil
+}
+
+func validateSession(ctx context.Context, db *store.Store, sessionID string) (*models.User, error) {
+	session, err := db.GetSession(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	user, err := db.GetUser(ctx, session.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func logoutSession(ctx context.Context, db *store.Store, sessionID string) error {
+	return db.DeleteSession(ctx, sessionID)
+}
+
+func (s *Service) StartOIDCAuth(baseURL, redirectPath string) (*OIDCAuthRequest, error) {
+	return nil, ErrUnsupportedAuthMode
+}
+
+func (s *Service) CompleteOIDCAuth(ctx context.Context, baseURL, code, expectedNonce, ip, userAgent string) (*models.User, *models.Session, error) {
+	return nil, nil, ErrUnsupportedAuthMode
 }
 
 // RunSessionCleanup periodically deletes expired sessions.
@@ -225,5 +275,58 @@ func (s *Service) RunSessionCleanup(ctx context.Context, interval time.Duration,
 				logger.Info("cleaned up expired sessions", "count", deleted)
 			}
 		}
+	}
+}
+
+func normalizeOIDCIssuer(issuer string) string {
+	return strings.TrimRight(strings.TrimSpace(issuer), "/")
+}
+
+func newFlowSecret() (string, error) {
+	var buf [32]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf[:]), nil
+}
+
+func normalizeRedirectPath(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw[0] != '/' {
+		return "/"
+	}
+	if len(raw) > 1 && raw[1] == '/' {
+		return "/"
+	}
+	return raw
+}
+
+func SetOIDCFlowCookies(w http.ResponseWriter, flow *OIDCAuthRequest) {
+	setCookie := func(name, value string) {
+		http.SetCookie(w, &http.Cookie{
+			Name:     name,
+			Value:    value,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   int(oidcFlowCookieTTL.Seconds()),
+		})
+	}
+
+	setCookie(OIDCStateCookieName, flow.State)
+	setCookie(OIDCNonceCookieName, flow.Nonce)
+	setCookie(OIDCRedirectCookieName, flow.RedirectPath)
+}
+
+func ClearOIDCFlowCookies(w http.ResponseWriter) {
+	for _, name := range []string{OIDCStateCookieName, OIDCNonceCookieName, OIDCRedirectCookieName} {
+		http.SetCookie(w, &http.Cookie{
+			Name:     name,
+			Value:    "",
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   -1,
+		})
 	}
 }

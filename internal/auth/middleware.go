@@ -1,13 +1,31 @@
 package auth
 
 import (
+	"context"
 	"net/http"
+
+	"github.com/chrishaylesai/hookwatch/internal/models"
 )
+
+type sessionValidator interface {
+	ValidateSession(ctx context.Context, sessionID string) (*models.User, error)
+}
 
 // SessionMiddleware extracts the session cookie, validates it, and injects
 // the authenticated user into the request context. If no valid session is
 // found, the request proceeds with a nil user (unauthenticated).
 func (s *Service) SessionMiddleware(next http.Handler) http.Handler {
+	return sessionMiddleware(s, next)
+}
+
+// SessionMiddleware extracts the session cookie, validates it, and injects
+// the authenticated user into the request context. If no valid session is
+// found, the request proceeds with a nil user (unauthenticated).
+func (s *OIDCService) SessionMiddleware(next http.Handler) http.Handler {
+	return sessionMiddleware(s, next)
+}
+
+func sessionMiddleware(validator sessionValidator, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie(SessionCookieName)
 		if err != nil || cookie.Value == "" {
@@ -15,7 +33,7 @@ func (s *Service) SessionMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		user, err := s.ValidateSession(r.Context(), cookie.Value)
+		user, err := validator.ValidateSession(r.Context(), cookie.Value)
 		if err != nil {
 			// Invalid/expired session — proceed as unauthenticated
 			next.ServeHTTP(w, r)
