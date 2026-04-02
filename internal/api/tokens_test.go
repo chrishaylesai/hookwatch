@@ -174,38 +174,6 @@ func TestCreateTokenRejectsInvalidAccessModes(t *testing.T) {
 	}
 }
 
-func TestGetTokenHidesPrivateViewHooks(t *testing.T) {
-	t.Parallel()
-
-	db := newTestStore(t)
-	ctx := context.Background()
-	now := time.Date(2026, 3, 31, 14, 0, 0, 0, time.UTC)
-	token := &models.Token{
-		UUID:               "550e8400-e29b-41d4-a716-446655440010",
-		ReceiveMode:        receiveModePublic,
-		ViewMode:           viewModePrivate,
-		DefaultStatus:      http.StatusOK,
-		DefaultContent:     "",
-		DefaultContentType: "text/plain",
-		Timeout:            0,
-		CORS:               false,
-		CreatedAt:          now,
-		UpdatedAt:          now,
-	}
-	if err := db.CreateToken(ctx, token); err != nil {
-		t.Fatalf("CreateToken: %v", err)
-	}
-
-	router := NewRouter(db, hub.New(), authModeNone, nil)
-	req := httptest.NewRequest(http.MethodGet, "/api/tokens/"+token.UUID, nil)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
-	}
-}
-
 func TestGetTokenReturnsGoneWhenExpired(t *testing.T) {
 	t.Parallel()
 

@@ -18,12 +18,12 @@ import (
 // NewRouter creates the HTTP router with all routes.
 func NewRouter(db *store.Store, eventHub *hub.Hub, authMode string, authService auth.Authenticator) http.Handler {
 	r := chi.NewRouter()
-	tokenHandler := newTokenHandler(db, eventHub, authMode)
-	requestHandler := newRequestHandler(db)
-	captureHandler := newCaptureHandler(db, eventHub)
-	eventHandler := newEventHandler(db, eventHub)
-
 	policy := authz.NewPolicy(db, authMode)
+	tokenHandler := newTokenHandler(db, eventHub, authMode, policy)
+	requestHandler := newRequestHandler(db, policy)
+	captureHandler := newCaptureHandler(db, eventHub)
+	eventHandler := newEventHandler(db, eventHub, policy)
+
 	authH := newAuthHandler(authService, authMode)
 	grantH := newGrantHandler(db, policy)
 	adminH := newAdminHandler(db)

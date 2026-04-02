@@ -44,16 +44,16 @@ func validateAndNormalizeTokenAccess(token *models.Token, authMode string) error
 	return nil
 }
 
-func canViewToken(token *models.Token) bool {
-	return token.ViewMode != viewModePrivate
-}
-
 func canCaptureWebhook(token *models.Token) bool {
 	return token.ReceiveMode != receiveModePrivate
 }
 
 func writePrivateViewModeDenied(w http.ResponseWriter) {
 	writeError(w, http.StatusNotFound, "token not found")
+}
+
+func writeTokenPermissionDenied(w http.ResponseWriter) {
+	writeError(w, http.StatusForbidden, "insufficient permissions")
 }
 
 func writeReceiveModeUnauthorized(w http.ResponseWriter) {

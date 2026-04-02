@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/chrishaylesai/hookwatch/internal/authz"
 	"github.com/chrishaylesai/hookwatch/internal/hub"
 	"github.com/chrishaylesai/hookwatch/internal/models"
 	"github.com/chrishaylesai/hookwatch/internal/store"
@@ -18,14 +19,16 @@ import (
 var sseEventCounter atomic.Uint64
 
 type eventHandler struct {
-	store *store.Store
-	hub   *hub.Hub
+	store  *store.Store
+	hub    *hub.Hub
+	policy *authz.Policy
 }
 
-func newEventHandler(db *store.Store, eventHub *hub.Hub) *eventHandler {
+func newEventHandler(db *store.Store, eventHub *hub.Hub, policy *authz.Policy) *eventHandler {
 	return &eventHandler{
-		store: db,
-		hub:   eventHub,
+		store:  db,
+		hub:    eventHub,
+		policy: policy,
 	}
 }
 
@@ -45,7 +48,7 @@ func (h *eventHandler) stream(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to get token")
 		return
 	}
-	if !canViewToken(token) {
+	if !h.policy.CanAccessToken(r.Context(), token, authz.ActionView) {
 		writePrivateViewModeDenied(w)
 		return
 	}

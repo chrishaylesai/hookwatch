@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chrishaylesai/hookwatch/internal/auth"
+	"github.com/chrishaylesai/hookwatch/internal/authz"
 	"github.com/chrishaylesai/hookwatch/internal/hub"
 	"github.com/chrishaylesai/hookwatch/internal/models"
 	"github.com/chrishaylesai/hookwatch/internal/store"
@@ -23,6 +25,7 @@ type tokenHandler struct {
 	store    *store.Store
 	eventHub *hub.Hub
 	authMode string
+	policy   *authz.Policy
 }
 
 type tokenPayload struct {
@@ -67,11 +70,12 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
-func newTokenHandler(db *store.Store, eventHub *hub.Hub, authMode string) *tokenHandler {
+func newTokenHandler(db *store.Store, eventHub *hub.Hub, authMode string, policy *authz.Policy) *tokenHandler {
 	return &tokenHandler{
 		store:    db,
 		eventHub: eventHub,
 		authMode: normalizedAuthMode(authMode),
+		policy:   policy,
 	}
 }
 
@@ -97,6 +101,9 @@ func (h *tokenHandler) createToken(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:          now,
 	}
 	applyTokenPayload(token, payload)
+	if user := auth.UserFromContext(r.Context()); user != nil {
+		token.OwnerID = &user.ID
+	}
 	if err := validateAndNormalizeTokenAccess(token, h.authMode); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -163,7 +170,7 @@ func (h *tokenHandler) getToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !canViewToken(token) {
+	if !h.policy.CanAccessToken(r.Context(), token, authz.ActionView) {
 		writePrivateViewModeDenied(w)
 		return
 	}
@@ -189,6 +196,10 @@ func (h *tokenHandler) updateToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "failed to get token")
+		return
+	}
+	if !h.policy.CanAccessToken(r.Context(), token, authz.ActionEdit) {
+		writeTokenPermissionDenied(w)
 		return
 	}
 
@@ -233,7 +244,8 @@ func (h *tokenHandler) updateToken(w http.ResponseWriter, r *http.Request) {
 func (h *tokenHandler) deleteToken(w http.ResponseWriter, r *http.Request) {
 	tokenID := chi.URLParam(r, "tokenId")
 
-	if _, err := loadActiveToken(r.Context(), h.store, tokenID, false); err != nil {
+	token, err := loadActiveToken(r.Context(), h.store, tokenID, false)
+	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "token not found")
 			return
@@ -243,6 +255,10 @@ func (h *tokenHandler) deleteToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "failed to get token")
+		return
+	}
+	if !h.policy.CanAccessToken(r.Context(), token, authz.ActionDelete) {
+		writeTokenPermissionDenied(w)
 		return
 	}
 
@@ -273,6 +289,10 @@ func (h *tokenHandler) rotateReceiveSecret(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "failed to get token")
+		return
+	}
+	if !h.policy.CanAccessToken(r.Context(), token, authz.ActionEdit) {
+		writeTokenPermissionDenied(w)
 		return
 	}
 

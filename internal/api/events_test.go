@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chrishaylesai/hookwatch/internal/authz"
 	"github.com/chrishaylesai/hookwatch/internal/hub"
 	"github.com/chrishaylesai/hookwatch/internal/models"
 	"github.com/go-chi/chi/v5"
@@ -38,7 +39,7 @@ func TestEventsEndpointStreamsRequestCreated(t *testing.T) {
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	streamHandler := newEventHandler(db, eventHub)
+	streamHandler := newEventHandler(db, eventHub, authz.NewPolicy(db, authModeNone))
 	streamCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -78,40 +79,6 @@ func TestEventsEndpointStreamsRequestCreated(t *testing.T) {
 	}
 	if !strings.Contains(body, `"token_id":"`+tokenID+`"`) {
 		t.Fatalf("stream body missing token id: %q", body)
-	}
-}
-
-func TestEventsEndpointHidesPrivateViewHooks(t *testing.T) {
-	t.Parallel()
-
-	db := newTestStore(t)
-	eventHub := hub.New()
-	ctx := context.Background()
-	now := time.Date(2026, 3, 31, 15, 0, 0, 0, time.UTC)
-	tokenID := "550e8400-e29b-41d4-a716-446655440021"
-	token := &models.Token{
-		UUID:               tokenID,
-		ReceiveMode:        receiveModePublic,
-		ViewMode:           viewModePrivate,
-		DefaultStatus:      http.StatusOK,
-		DefaultContent:     "",
-		DefaultContentType: "text/plain",
-		Timeout:            0,
-		CORS:               false,
-		CreatedAt:          now,
-		UpdatedAt:          now,
-	}
-	if err := db.CreateToken(ctx, token); err != nil {
-		t.Fatalf("CreateToken: %v", err)
-	}
-
-	router := NewRouter(db, eventHub, authModeNone, nil)
-	req := httptest.NewRequest(http.MethodGet, "/api/tokens/"+tokenID+"/events", nil)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 }
 

@@ -8,13 +8,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chrishaylesai/hookwatch/internal/authz"
 	"github.com/chrishaylesai/hookwatch/internal/models"
 	"github.com/chrishaylesai/hookwatch/internal/store"
 	"github.com/go-chi/chi/v5"
 )
 
 type requestHandler struct {
-	store *store.Store
+	store  *store.Store
+	policy *authz.Policy
 }
 
 type requestResponse struct {
@@ -51,8 +53,8 @@ type requestListQuery struct {
 	IP      string
 }
 
-func newRequestHandler(db *store.Store) *requestHandler {
-	return &requestHandler{store: db}
+func newRequestHandler(db *store.Store, policy *authz.Policy) *requestHandler {
+	return &requestHandler{store: db, policy: policy}
 }
 
 func (h *requestHandler) listRequests(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +79,7 @@ func (h *requestHandler) listRequests(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to get token")
 		return
 	}
-	if !canViewToken(token) {
+	if !h.policy.CanAccessToken(r.Context(), token, authz.ActionView) {
 		writePrivateViewModeDenied(w)
 		return
 	}
@@ -134,7 +136,7 @@ func (h *requestHandler) getRequest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to get token")
 		return
 	}
-	if !canViewToken(token) {
+	if !h.policy.CanAccessToken(r.Context(), token, authz.ActionView) {
 		writePrivateViewModeDenied(w)
 		return
 	}
@@ -173,7 +175,7 @@ func (h *requestHandler) getRawRequest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to get token")
 		return
 	}
-	if !canViewToken(token) {
+	if !h.policy.CanAccessToken(r.Context(), token, authz.ActionView) {
 		writePrivateViewModeDenied(w)
 		return
 	}
@@ -214,8 +216,8 @@ func (h *requestHandler) deleteRequest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to get token")
 		return
 	}
-	if !canViewToken(token) {
-		writePrivateViewModeDenied(w)
+	if !h.policy.CanAccessToken(r.Context(), token, authz.ActionEdit) {
+		writeTokenPermissionDenied(w)
 		return
 	}
 	if err := refreshTokenExpiry(r.Context(), h.store, token); err != nil {
@@ -251,8 +253,8 @@ func (h *requestHandler) deleteAllRequests(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "failed to get token")
 		return
 	}
-	if !canViewToken(token) {
-		writePrivateViewModeDenied(w)
+	if !h.policy.CanAccessToken(r.Context(), token, authz.ActionEdit) {
+		writeTokenPermissionDenied(w)
 		return
 	}
 	if err := refreshTokenExpiry(r.Context(), h.store, token); err != nil {
