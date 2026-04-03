@@ -34,6 +34,7 @@ func TestCaptureWebhookStoresRequestAndUsesTokenDefaults(t *testing.T) {
 		CORS:               false,
 		CreatedAt:          now,
 		UpdatedAt:          now,
+		ExpiresAt:          activeExpiresAt(),
 	}
 	if err := db.CreateToken(ctx, token); err != nil {
 		t.Fatalf("CreateToken: %v", err)
@@ -174,6 +175,7 @@ func TestCaptureWebhookReturnsGoneWhenQuotaExceeded(t *testing.T) {
 		CORS:               false,
 		CreatedAt:          now,
 		UpdatedAt:          now,
+		ExpiresAt:          activeExpiresAt(),
 	}
 	if err := db.CreateToken(ctx, token); err != nil {
 		t.Fatalf("CreateToken: %v", err)
@@ -228,6 +230,7 @@ func TestCaptureWebhookRejectsPrivateReceiveModeWithoutSecret(t *testing.T) {
 		CORS:                false,
 		CreatedAt:           now,
 		UpdatedAt:           now,
+		ExpiresAt:           activeExpiresAt(),
 	}
 	if err := db.CreateToken(ctx, token); err != nil {
 		t.Fatalf("CreateToken: %v", err)
@@ -267,6 +270,7 @@ func TestCaptureWebhookAcceptsHeaderSecretAndScrubsItFromStoredRequest(t *testin
 		CORS:                false,
 		CreatedAt:           now,
 		UpdatedAt:           now,
+		ExpiresAt:           activeExpiresAt(),
 	}
 	if err := db.CreateToken(ctx, token); err != nil {
 		t.Fatalf("CreateToken: %v", err)
@@ -325,6 +329,7 @@ func TestCaptureWebhookAcceptsQuerySecretAndScrubsURL(t *testing.T) {
 		CORS:                false,
 		CreatedAt:           now,
 		UpdatedAt:           now,
+		ExpiresAt:           activeExpiresAt(),
 	}
 	if err := db.CreateToken(ctx, token); err != nil {
 		t.Fatalf("CreateToken: %v", err)
@@ -376,6 +381,7 @@ func TestCaptureWebhookAcceptsBasicAuthSecretAndScrubsAuthorization(t *testing.T
 		CORS:                false,
 		CreatedAt:           now,
 		UpdatedAt:           now,
+		ExpiresAt:           activeExpiresAt(),
 	}
 	if err := db.CreateToken(ctx, token); err != nil {
 		t.Fatalf("CreateToken: %v", err)
@@ -420,6 +426,7 @@ func TestCaptureWebhookAddsCORSHeadersWhenEnabled(t *testing.T) {
 		CORS:               true,
 		CreatedAt:          now,
 		UpdatedAt:          now,
+		ExpiresAt:          activeExpiresAt(),
 	}
 	if err := db.CreateToken(ctx, token); err != nil {
 		t.Fatalf("CreateToken: %v", err)

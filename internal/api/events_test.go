@@ -34,6 +34,7 @@ func TestEventsEndpointStreamsRequestCreated(t *testing.T) {
 		CORS:               false,
 		CreatedAt:          now,
 		UpdatedAt:          now,
+		ExpiresAt:          activeExpiresAt(),
 	}
 	if err := db.CreateToken(ctx, token); err != nil {
 		t.Fatalf("CreateToken: %v", err)

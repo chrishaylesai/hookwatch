@@ -142,3 +142,41 @@ HOOKWATCH_OIDC_CLIENT_ID=hookwatch \
 HOOKWATCH_OIDC_CLIENT_SECRET=super-secret \
 docker compose up --build
 ```
+
+## Local OIDC With Keycloak
+
+Docker Desktop:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.oidc.yml up --build
+```
+
+Linux:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.oidc.yml -f docker-compose.oidc.linux.yml up --build
+```
+
+Local URLs and credentials:
+
+- HookWatch: `http://localhost:8080`
+- Keycloak realm: `hookwatch`
+- Keycloak admin console: `http://localhost:8090/admin/`
+- Keycloak admin console user: `admin`
+- Keycloak admin console password: `admin`
+- HookWatch realm login user: `admin`
+- HookWatch realm login password: `admin`
+- Test OIDC user: `hookwatch-user`
+- Test OIDC password: `hookwatch-password`
+
+Important:
+
+- the Keycloak admin console account lives in the `master` realm
+- HookWatch signs into the imported `hookwatch` realm
+- the local bootstrap now includes a matching `admin` user inside the `hookwatch` realm so `admin/admin` works on the HookWatch login screen too
+
+The compose overlay preconfigures HookWatch with:
+
+- issuer: `http://keycloak.localhost:8090/realms/hookwatch`
+- client ID: `hookwatch`
+- client secret: `hookwatch-local-secret`

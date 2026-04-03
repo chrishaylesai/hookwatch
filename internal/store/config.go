@@ -4,7 +4,7 @@ import "time"
 
 const (
 	DefaultMaxRequests          = 500
-	DefaultTokenTTL             = 7 * 24 * time.Hour
+	DefaultTokenTTL             = 24 * time.Hour
 	DefaultTokenCleanupInterval = time.Hour
 )
 
@@ -22,4 +22,8 @@ func normalizeConfig(cfg Config) Config {
 		cfg.MaxRequests = DefaultMaxRequests
 	}
 	return cfg
+}
+
+func (s *Store) TokenTTL() time.Duration {
+	return s.config.TokenTTL
 }

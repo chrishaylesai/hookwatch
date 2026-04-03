@@ -39,7 +39,7 @@ func TestListTokensAndRequestsProvidePagination(t *testing.T) {
 
 	s := newTestStore(t)
 	ctx := context.Background()
-	base := time.Date(2026, 3, 30, 15, 0, 0, 0, time.UTC)
+	base := time.Now().UTC().Add(-2 * time.Hour)
 
 	for i := 1; i <= 3; i++ {
 		tokenTime := base.Add(time.Duration(i) * time.Minute)
@@ -107,7 +107,7 @@ func TestListTokensForUserReturnsOwnedAndGrantedActiveTokens(t *testing.T) {
 
 	s := newTestStore(t)
 	ctx := context.Background()
-	base := time.Date(2026, 4, 1, 9, 0, 0, 0, time.UTC)
+	base := time.Now().UTC().Add(-2 * time.Hour)
 
 	owner := &models.User{
 		ID:          "owner-1",
@@ -212,7 +212,7 @@ func TestListTokensForAdminIncludesOwnerDisplayAndActiveTokensOnly(t *testing.T)
 
 	s := newTestStore(t)
 	ctx := context.Background()
-	base := time.Date(2026, 4, 1, 9, 0, 0, 0, time.UTC)
+	base := time.Now().UTC().Add(-2 * time.Hour)
 
 	owner := &models.User{
 		ID:          "owner-1",

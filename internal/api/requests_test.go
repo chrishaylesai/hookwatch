@@ -4,8 +4,8 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/json"
 	"encoding/hex"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -255,9 +255,9 @@ func TestOpenAPIGenerationEndpoint(t *testing.T) {
 	}
 
 	var resp struct {
-		OpenAPI string                         `json:"openapi"`
-		Paths   map[string]map[string]any      `json:"paths"`
-		Info    map[string]any                 `json:"info"`
+		OpenAPI string                    `json:"openapi"`
+		Paths   map[string]map[string]any `json:"paths"`
+		Info    map[string]any            `json:"info"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode spec response: %v", err)
@@ -295,6 +295,7 @@ func TestCaptureStoresSignatureValidation(t *testing.T) {
 		DefaultContentType: "text/plain",
 		CreatedAt:          now,
 		UpdatedAt:          now,
+		ExpiresAt:          activeExpiresAt(),
 	}
 	if err := db.CreateToken(context.Background(), token); err != nil {
 		t.Fatalf("CreateToken: %v", err)
@@ -355,6 +356,10 @@ func newTestStore(t *testing.T) *store.Store {
 	return db
 }
 
+func activeExpiresAt() time.Time {
+	return time.Now().UTC().Add(store.DefaultTokenTTL)
+}
+
 func seedRequestData(t *testing.T, db *store.Store) {
 	t.Helper()
 
@@ -371,6 +376,7 @@ func seedRequestData(t *testing.T, db *store.Store) {
 		CORS:               false,
 		CreatedAt:          createdAt,
 		UpdatedAt:          createdAt,
+		ExpiresAt:          activeExpiresAt(),
 	}
 	if err := db.CreateToken(ctx, token); err != nil {
 		t.Fatalf("CreateToken: %v", err)

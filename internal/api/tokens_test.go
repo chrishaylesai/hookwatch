@@ -11,6 +11,7 @@ import (
 
 	"github.com/chrishaylesai/hookwatch/internal/hub"
 	"github.com/chrishaylesai/hookwatch/internal/models"
+	"github.com/chrishaylesai/hookwatch/internal/store"
 )
 
 func TestCreateTokenAcceptsConfigurableResponseFields(t *testing.T) {
@@ -582,8 +583,9 @@ func TestGetTokenRefreshesExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetToken: %v", err)
 	}
-	if !stored.ExpiresAt.After(now.Add(6 * 24 * time.Hour)) {
-		t.Fatalf("expires_at = %v, want it refreshed beyond %v", stored.ExpiresAt, now.Add(6*24*time.Hour))
+	wantMinimum := time.Now().UTC().Add(store.DefaultTokenTTL - time.Hour)
+	if !stored.ExpiresAt.After(wantMinimum) {
+		t.Fatalf("expires_at = %v, want it refreshed beyond %v", stored.ExpiresAt, wantMinimum)
 	}
 }
 
@@ -604,6 +606,7 @@ func TestUpdateTokenRejectsInvalidTimeout(t *testing.T) {
 		CORS:               false,
 		CreatedAt:          now,
 		UpdatedAt:          now,
+		ExpiresAt:          activeExpiresAt(),
 	}
 	if err := db.CreateToken(ctx, token); err != nil {
 		t.Fatalf("CreateToken: %v", err)
@@ -651,6 +654,7 @@ func TestUpdateTokenPublicToPrivateReturnsOneTimeReceiveSecret(t *testing.T) {
 		CORS:               false,
 		CreatedAt:          now,
 		UpdatedAt:          now,
+		ExpiresAt:          activeExpiresAt(),
 	}
 	if err := db.CreateToken(ctx, token); err != nil {
 		t.Fatalf("CreateToken: %v", err)
@@ -712,6 +716,7 @@ func TestUpdateTokenPrivateToPublicClearsReceiveSecretState(t *testing.T) {
 		CORS:                false,
 		CreatedAt:           now,
 		UpdatedAt:           now,
+		ExpiresAt:           activeExpiresAt(),
 	}
 	if err := db.CreateToken(ctx, token); err != nil {
 		t.Fatalf("CreateToken: %v", err)
@@ -757,6 +762,7 @@ func TestRotateReceiveSecretReturnsNewSecretAndUpdatesStoredHash(t *testing.T) {
 		CORS:                false,
 		CreatedAt:           now,
 		UpdatedAt:           now,
+		ExpiresAt:           activeExpiresAt(),
 	}
 	if err := db.CreateToken(ctx, token); err != nil {
 		t.Fatalf("CreateToken: %v", err)
@@ -803,6 +809,121 @@ func TestRotateReceiveSecretReturnsNewSecretAndUpdatesStoredHash(t *testing.T) {
 	}
 }
 
+func TestUpdateTokenUsesConfiguredTTLWhenRefreshingExpiry(t *testing.T) {
+	db, err := store.Open(t.TempDir(), store.Config{TokenTTL: 2 * time.Hour})
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Fatalf("store.Close: %v", closeErr)
+		}
+	})
+
+	restore := timeNow
+	now := time.Date(2026, 4, 2, 10, 0, 0, 0, time.UTC)
+	timeNow = func() time.Time { return now }
+	t.Cleanup(func() {
+		timeNow = restore
+	})
+
+	ctx := context.Background()
+	token := &models.Token{
+		UUID:               "550e8400-e29b-41d4-a716-446655440016",
+		ReceiveMode:        receiveModePublic,
+		ViewMode:           viewModePublic,
+		DefaultStatus:      http.StatusOK,
+		DefaultContent:     "",
+		DefaultContentType: "text/plain",
+		Timeout:            0,
+		CORS:               false,
+		CreatedAt:          now.Add(-time.Hour),
+		UpdatedAt:          now.Add(-time.Hour),
+		ExpiresAt:          now.Add(time.Hour),
+	}
+	if err := db.CreateToken(ctx, token); err != nil {
+		t.Fatalf("CreateToken: %v", err)
+	}
+
+	router := NewRouter(db, hub.New(), authModeNone, nil, nil)
+	req := httptest.NewRequest(http.MethodPut, "/api/tokens/"+token.UUID, bytes.NewReader([]byte(`{"default_status":204}`)))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	stored, err := db.GetToken(ctx, token.UUID)
+	if err != nil {
+		t.Fatalf("GetToken: %v", err)
+	}
+	want := now.Add(2 * time.Hour)
+	if !stored.ExpiresAt.Equal(want) {
+		t.Fatalf("expires_at = %v, want %v", stored.ExpiresAt, want)
+	}
+}
+
+func TestRotateReceiveSecretUsesConfiguredTTLWhenRefreshingExpiry(t *testing.T) {
+	db, err := store.Open(t.TempDir(), store.Config{TokenTTL: 2 * time.Hour})
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Fatalf("store.Close: %v", closeErr)
+		}
+	})
+
+	restore := timeNow
+	now := time.Date(2026, 4, 2, 11, 0, 0, 0, time.UTC)
+	timeNow = func() time.Time { return now }
+	t.Cleanup(func() {
+		timeNow = restore
+	})
+
+	ctx := context.Background()
+	oldSecret := "abcd1234secret"
+	oldHash := hashReceiveSecret(oldSecret)
+	oldPrefix := oldSecret[:4]
+	token := &models.Token{
+		UUID:                "550e8400-e29b-41d4-a716-446655440017",
+		ReceiveMode:         receiveModePrivate,
+		ViewMode:            viewModePublic,
+		ReceiveSecretHash:   &oldHash,
+		ReceiveSecretPrefix: &oldPrefix,
+		DefaultStatus:       http.StatusOK,
+		DefaultContent:      "",
+		DefaultContentType:  "text/plain",
+		Timeout:             0,
+		CORS:                false,
+		CreatedAt:           now.Add(-time.Hour),
+		UpdatedAt:           now.Add(-time.Hour),
+		ExpiresAt:           now.Add(time.Hour),
+	}
+	if err := db.CreateToken(ctx, token); err != nil {
+		t.Fatalf("CreateToken: %v", err)
+	}
+
+	router := NewRouter(db, hub.New(), authModeNone, nil, nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/tokens/"+token.UUID+"/rotate-secret", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	stored, err := db.GetToken(ctx, token.UUID)
+	if err != nil {
+		t.Fatalf("GetToken: %v", err)
+	}
+	want := now.Add(2 * time.Hour)
+	if !stored.ExpiresAt.Equal(want) {
+		t.Fatalf("expires_at = %v, want %v", stored.ExpiresAt, want)
+	}
+}
+
 func TestRotateReceiveSecretRejectsPublicToken(t *testing.T) {
 	t.Parallel()
 
@@ -820,6 +941,7 @@ func TestRotateReceiveSecretRejectsPublicToken(t *testing.T) {
 		CORS:               false,
 		CreatedAt:          now,
 		UpdatedAt:          now,
+		ExpiresAt:          activeExpiresAt(),
 	}
 	if err := db.CreateToken(ctx, token); err != nil {
 		t.Fatalf("CreateToken: %v", err)
@@ -853,6 +975,7 @@ func TestCaptureWebhookHonorsConfiguredTimeout(t *testing.T) {
 		CORS:               false,
 		CreatedAt:          now,
 		UpdatedAt:          now,
+		ExpiresAt:          activeExpiresAt(),
 	}
 	if err := db.CreateToken(ctx, token); err != nil {
 		t.Fatalf("CreateToken: %v", err)

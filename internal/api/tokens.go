@@ -277,7 +277,7 @@ func (h *tokenHandler) updateToken(w http.ResponseWriter, r *http.Request) {
 	now := timeNow().UTC()
 	token.UpdatedAt = now
 	if !token.Persistent {
-		token.ExpiresAt = now.Add(store.DefaultTokenTTL)
+		token.ExpiresAt = now.Add(h.store.TokenTTL())
 	} else {
 		token.ExpiresAt = time.Time{}
 	}
@@ -364,7 +364,7 @@ func (h *tokenHandler) rotateReceiveSecret(w http.ResponseWriter, r *http.Reques
 	now := timeNow().UTC()
 	token.UpdatedAt = now
 	if !token.Persistent {
-		token.ExpiresAt = now.Add(store.DefaultTokenTTL)
+		token.ExpiresAt = now.Add(h.store.TokenTTL())
 	}
 	if err := h.store.UpdateToken(r.Context(), token); err != nil {
 		if errors.Is(err, store.ErrNotFound) {

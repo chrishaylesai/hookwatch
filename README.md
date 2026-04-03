@@ -45,6 +45,20 @@ What this does:
 - starts the app on port `8080`
 - persists SQLite data in the named Docker volume `hookwatch-data`
 
+For local OIDC with Keycloak:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.oidc.yml up --build
+```
+
+For Linux, add the compatibility override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.oidc.yml -f docker-compose.oidc.linux.yml up --build
+```
+
+For the local OIDC stack, sign into HookWatch with the imported realm user `admin` / `admin` or `hookwatch-user` / `hookwatch-password`.
+
 To stop it:
 
 ```bash
@@ -105,7 +119,7 @@ Common flags:
 --oidc-issuer=
 --oidc-client-id=
 --oidc-client-secret=
---token-ttl 168h
+--token-ttl 24h
 --max-requests 500
 --token-cleanup-interval 1h
 ```
@@ -120,7 +134,7 @@ HOOKWATCH_ALLOW_REGISTRATION=false
 HOOKWATCH_OIDC_ISSUER=
 HOOKWATCH_OIDC_CLIENT_ID=
 HOOKWATCH_OIDC_CLIENT_SECRET=
-HOOKWATCH_TOKEN_TTL=168h
+HOOKWATCH_TOKEN_TTL=24h
 HOOKWATCH_MAX_REQUESTS=500
 HOOKWATCH_TOKEN_CLEANUP_INTERVAL=1h
 ```
@@ -130,7 +144,7 @@ Defaults:
 - port: `8080`
 - data dir: `./data`
 - auth mode: `none`
-- token TTL: `168h` (7 days)
+- token TTL: `24h` (1 day)
 - max captured requests per token: `500`
 - expired token cleanup interval: `1h`
 

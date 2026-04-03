@@ -87,7 +87,7 @@
 		<section class="space-y-3">
 			<h2 class="text-xl font-semibold">6. Token expiry</h2>
 			<p class="text-sm leading-7 text-[var(--muted-foreground)]">
-				Tokens expire automatically after 7 days. The expiry date is shown on the token view page. Expired tokens and their captured requests are cleaned up by the server.
+				Tokens expire automatically after 1 day. The expiry date is shown on the token view page. Expired tokens and their captured requests are cleaned up by the server.
 			</p>
 		</section>
 	</div>

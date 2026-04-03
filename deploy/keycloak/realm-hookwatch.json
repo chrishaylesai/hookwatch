@@ -1,0 +1,63 @@
+{
+  "realm": "hookwatch",
+  "enabled": true,
+  "displayName": "HookWatch Local",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "clients": [
+    {
+      "clientId": "hookwatch",
+      "name": "HookWatch",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "hookwatch-local-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8080/api/auth/oidc/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:8080"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:8080/*"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "HookWatch",
+      "lastName": "Admin",
+      "email": "admin@example.com",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "hookwatch-user",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "HookWatch",
+      "lastName": "User",
+      "email": "hookwatch-user@example.com",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "hookwatch-password",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+services:
+  hookwatch:
+    depends_on:
+      - keycloak
+    environment:
+      HOOKWATCH_AUTH_MODE: oidc
+      HOOKWATCH_OIDC_ISSUER: http://keycloak.localhost:8090/realms/hookwatch
+      HOOKWATCH_OIDC_CLIENT_ID: hookwatch
+      HOOKWATCH_OIDC_CLIENT_SECRET: hookwatch-local-secret
+    extra_hosts:
+      - "keycloak.localhost:host-gateway"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1
+    command:
+      - start-dev
+      - --import-realm
+      - --hostname=http://keycloak.localhost:8090
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8090:8080"
+    volumes:
+      - ./deploy/keycloak/realm-hookwatch.json:/opt/keycloak/data/import/realm-hookwatch.json:ro
+    restart: unless-stopped
