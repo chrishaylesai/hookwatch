@@ -172,3 +172,8 @@ curl -X POST http://localhost:8080/<token-id> \
 ```
 
 You should see the request appear in the UI for that token.
+
+## License
+
+HookWatch is licensed under the GNU Affero General Public License v3.0.
+See [`LICENSE`](./LICENSE) for the full license text.
