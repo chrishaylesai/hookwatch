@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
+	import { getAuth } from '$lib/auth.svelte';
 	import Button from '$lib/components/ui/button.svelte';
 	import type { TokenResponse } from '$lib/types';
 
@@ -11,6 +12,8 @@
 	let isCreating = $state(false);
 	let createError = $state('');
 	let copyState = $state<'idle' | 'done' | 'error'>('idle');
+
+	const auth = getAuth();
 
 	const webhookUrl = $derived.by(() => {
 		if (!createdToken) {
@@ -31,6 +34,13 @@
 	function buildTokenViewURL(uuid: string) {
 		return `/tokens/${uuid}`;
 	}
+
+	const tokenIndexLabel = $derived.by(() => {
+		if (!auth.authEnabled) {
+			return 'Browse active tokens';
+		}
+		return 'View your tokens';
+	});
 
 	async function createWebhook(event: SubmitEvent) {
 		event.preventDefault();
@@ -113,6 +123,9 @@
 				>
 					Open token view
 				</Button>
+				{#if auth.loaded && (!auth.authEnabled || auth.isAuthenticated)}
+					<Button href="/tokens" variant="ghost" class="w-full sm:w-auto">{tokenIndexLabel}</Button>
+				{/if}
 				{#if copyState === 'done'}
 					<p class="text-sm text-[var(--accent-strong)]">Copied.</p>
 				{:else if copyState === 'error'}
@@ -143,6 +156,12 @@
 				</div>
 			{/if}
 		</form>
+
+		{#if auth.loaded && (!auth.authEnabled || auth.isAuthenticated)}
+			<div class="mt-4 w-full">
+				<Button href="/tokens" variant="secondary" class="w-full">{tokenIndexLabel}</Button>
+			</div>
+		{/if}
 	{/if}
 
 	<p class="mt-10 text-xs text-[var(--muted-foreground)]">

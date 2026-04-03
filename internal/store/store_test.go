@@ -102,6 +102,176 @@ func TestListTokensAndRequestsProvidePagination(t *testing.T) {
 	}
 }
 
+func TestListTokensForUserReturnsOwnedAndGrantedActiveTokens(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 4, 1, 9, 0, 0, 0, time.UTC)
+
+	owner := &models.User{
+		ID:          "owner-1",
+		Email:       "owner@example.com",
+		DisplayName: "Owner",
+		GlobalRole:  "user",
+		CreatedAt:   base,
+		UpdatedAt:   base,
+	}
+	if err := s.CreateUser(ctx, owner); err != nil {
+		t.Fatalf("CreateUser(owner): %v", err)
+	}
+
+	other := &models.User{
+		ID:          "other-1",
+		Email:       "other@example.com",
+		DisplayName: "Other",
+		GlobalRole:  "user",
+		CreatedAt:   base,
+		UpdatedAt:   base,
+	}
+	if err := s.CreateUser(ctx, other); err != nil {
+		t.Fatalf("CreateUser(other): %v", err)
+	}
+
+	owned := newToken("owned-token", base.Add(time.Minute))
+	owned.OwnerID = &owner.ID
+	if err := s.CreateToken(ctx, owned); err != nil {
+		t.Fatalf("CreateToken(owned): %v", err)
+	}
+
+	shared := newToken("shared-token", base.Add(2*time.Minute))
+	shared.OwnerID = &other.ID
+	if err := s.CreateToken(ctx, shared); err != nil {
+		t.Fatalf("CreateToken(shared): %v", err)
+	}
+
+	expired := newToken("expired-token", base.Add(-time.Hour))
+	expired.OwnerID = &other.ID
+	expired.ExpiresAt = base.Add(-time.Minute)
+	if err := s.CreateToken(ctx, expired); err != nil {
+		t.Fatalf("CreateToken(expired): %v", err)
+	}
+
+	unrelated := newToken("unrelated-token", base.Add(3*time.Minute))
+	unrelated.OwnerID = &other.ID
+	if err := s.CreateToken(ctx, unrelated); err != nil {
+		t.Fatalf("CreateToken(unrelated): %v", err)
+	}
+
+	if err := s.CreateHookGrant(ctx, &models.HookGrant{
+		ID:        "grant-shared",
+		TokenID:   shared.UUID,
+		UserID:    owner.ID,
+		Role:      "editor",
+		GrantedBy: other.ID,
+		CreatedAt: base.Add(4 * time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateHookGrant(shared): %v", err)
+	}
+	if err := s.CreateHookGrant(ctx, &models.HookGrant{
+		ID:        "grant-expired",
+		TokenID:   expired.UUID,
+		UserID:    owner.ID,
+		Role:      "viewer",
+		GrantedBy: other.ID,
+		CreatedAt: base.Add(5 * time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateHookGrant(expired): %v", err)
+	}
+
+	page, err := s.ListTokensForUser(ctx, owner.ID, TokenListParams{
+		Limit:  10,
+		SortBy: "created_at",
+		Order:  "desc",
+	})
+	if err != nil {
+		t.Fatalf("ListTokensForUser: %v", err)
+	}
+	if page.Total != 2 {
+		t.Fatalf("ListTokensForUser total = %d, want 2", page.Total)
+	}
+	if len(page.Items) != 2 {
+		t.Fatalf("ListTokensForUser len = %d, want 2", len(page.Items))
+	}
+	if got := page.Items[0].Token.UUID; got != "shared-token" {
+		t.Fatalf("ListTokensForUser[0] uuid = %s, want shared-token", got)
+	}
+	if got := page.Items[0].AccessRole; got != "editor" {
+		t.Fatalf("ListTokensForUser[0] role = %s, want editor", got)
+	}
+	if got := page.Items[1].Token.UUID; got != "owned-token" {
+		t.Fatalf("ListTokensForUser[1] uuid = %s, want owned-token", got)
+	}
+	if got := page.Items[1].AccessRole; got != "owner" {
+		t.Fatalf("ListTokensForUser[1] role = %s, want owner", got)
+	}
+}
+
+func TestListTokensForAdminIncludesOwnerDisplayAndActiveTokensOnly(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 4, 1, 9, 0, 0, 0, time.UTC)
+
+	owner := &models.User{
+		ID:          "owner-1",
+		Email:       "owner@example.com",
+		DisplayName: "Owner Display",
+		GlobalRole:  "user",
+		CreatedAt:   base,
+		UpdatedAt:   base,
+	}
+	if err := s.CreateUser(ctx, owner); err != nil {
+		t.Fatalf("CreateUser(owner): %v", err)
+	}
+
+	owned := newToken("owned-token", base.Add(time.Minute))
+	owned.OwnerID = &owner.ID
+	if err := s.CreateToken(ctx, owned); err != nil {
+		t.Fatalf("CreateToken(owned): %v", err)
+	}
+
+	anonymous := newToken("anonymous-token", base.Add(2*time.Minute))
+	if err := s.CreateToken(ctx, anonymous); err != nil {
+		t.Fatalf("CreateToken(anonymous): %v", err)
+	}
+
+	expired := newToken("expired-token", base.Add(-time.Hour))
+	expired.OwnerID = &owner.ID
+	expired.ExpiresAt = base.Add(-time.Minute)
+	if err := s.CreateToken(ctx, expired); err != nil {
+		t.Fatalf("CreateToken(expired): %v", err)
+	}
+
+	page, err := s.ListTokensForAdmin(ctx, TokenListParams{
+		Limit:  10,
+		SortBy: "created_at",
+		Order:  "desc",
+	})
+	if err != nil {
+		t.Fatalf("ListTokensForAdmin: %v", err)
+	}
+	if page.Total != 2 {
+		t.Fatalf("ListTokensForAdmin total = %d, want 2", page.Total)
+	}
+	if len(page.Items) != 2 {
+		t.Fatalf("ListTokensForAdmin len = %d, want 2", len(page.Items))
+	}
+	if got := page.Items[0].Token.UUID; got != "anonymous-token" {
+		t.Fatalf("ListTokensForAdmin[0] uuid = %s, want anonymous-token", got)
+	}
+	if got := page.Items[0].OwnerDisplay; got != "Anonymous" {
+		t.Fatalf("ListTokensForAdmin[0] owner_display = %q, want Anonymous", got)
+	}
+	if got := page.Items[1].Token.UUID; got != "owned-token" {
+		t.Fatalf("ListTokensForAdmin[1] uuid = %s, want owned-token", got)
+	}
+	if got := page.Items[1].OwnerDisplay; got != "Owner Display" {
+		t.Fatalf("ListTokensForAdmin[1] owner_display = %q, want Owner Display", got)
+	}
+}
+
 func TestListRequestsByTokenSupportsFiltersAndMissingToken(t *testing.T) {
 	t.Parallel()
 

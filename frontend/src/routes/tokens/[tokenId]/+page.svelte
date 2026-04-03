@@ -89,8 +89,8 @@
 	let grantError = $state('');
 	let grantAdding = $state(false);
 
-	// Active tab: 'requests' or 'actions'
-	let activeTab = $state<'requests' | 'actions'>('requests');
+	// Active tab: 'requests', 'advanced', or 'actions'
+	let activeTab = $state<'requests' | 'advanced' | 'actions'>('requests');
 
 	// Action logs for selected request
 	let actionLogs = $state<ActionLog[]>([]);
@@ -1230,7 +1230,14 @@
 					onclick={() => (activeTab = 'requests')}
 					class="flex-1 rounded-md px-4 py-2 text-sm font-medium transition {activeTab === 'requests' ? 'bg-[var(--accent-soft)] text-[var(--foreground)]' : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)]'}"
 				>
-					Request detail
+					Requests
+				</button>
+				<button
+					type="button"
+					onclick={() => (activeTab = 'advanced')}
+					class="flex-1 rounded-md px-4 py-2 text-sm font-medium transition {activeTab === 'advanced' ? 'bg-[var(--accent-soft)] text-[var(--foreground)]' : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)]'}"
+				>
+					Advanced
 				</button>
 				<button
 					type="button"
@@ -1243,6 +1250,134 @@
 
 			{#if activeTab === 'actions'}
 				<ActionPipeline tokenId={currentToken.uuid} {actionLogs} />
+			{:else if activeTab === 'advanced'}
+				{#if selectedRequest}
+					<Card class="space-y-5">
+						<div class="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+							<div>
+								<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+									Advanced
+								</p>
+								<h2 class="mt-2 text-2xl font-semibold">Replay and compare</h2>
+							</div>
+							<Badge>{selectedRequest.method}</Badge>
+						</div>
+
+						<div class="space-y-5">
+							<Card class="space-y-4 border-[var(--border)] bg-[var(--card)] p-5 shadow-none">
+								<div class="flex items-start justify-between gap-3">
+									<div>
+										<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+											Replay
+										</p>
+										<h3 class="mt-2 text-lg font-semibold">Re-send this request</h3>
+									</div>
+									<span class={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.05em] ${signatureTone(selectedRequest.signature_validation.status)}`}>
+										{signatureLabel(selectedRequest)}
+									</span>
+								</div>
+
+								<label class="space-y-2">
+									<span class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+										Target URL
+									</span>
+									<input
+										class="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
+										type="url"
+										bind:value={replayURL}
+										placeholder="https://target.example.com/webhook"
+									/>
+								</label>
+
+								<div class="flex flex-wrap items-center gap-3">
+									<Button type="button" size="sm" onclick={replaySelectedRequest} disabled={replayState === 'loading'}>
+										{replayState === 'loading' ? 'Replaying...' : 'Replay request'}
+									</Button>
+									{#if replayState === 'success'}
+										<p class="text-sm text-[var(--accent-strong)]">Replay completed.</p>
+									{:else if replayState === 'error'}
+										<p class="text-sm text-red-700">{replayError}</p>
+									{/if}
+								</div>
+
+								{#if replayResult}
+									<div class="rounded-lg border border-[var(--border)] bg-[var(--accent-soft)] px-4 py-4">
+										<div class="flex flex-wrap items-center gap-3 text-sm">
+											<span class="font-semibold">Status {replayResult.status}</span>
+											<span>{replayResult.duration_ms}ms</span>
+										</div>
+										<p class="mt-3 break-all font-mono text-xs text-[var(--muted-foreground)]">{replayResult.url}</p>
+										<pre class="mt-3 overflow-x-auto rounded-md bg-[var(--card)] px-4 py-4 font-mono text-sm leading-6 whitespace-pre-wrap break-words">{replayResult.body || 'Empty response body'}</pre>
+									</div>
+								{/if}
+							</Card>
+
+							<Card class="space-y-4 border-[var(--border)] bg-[var(--card)] p-5 shadow-none">
+								<div>
+									<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+										Compare
+									</p>
+									<h3 class="mt-2 text-lg font-semibold">Diff against another request</h3>
+								</div>
+
+								<div class="flex flex-col gap-3 sm:flex-row">
+									<select
+										class="flex-1 rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
+										bind:value={compareRequestId}
+									>
+										<option value="">Choose another request</option>
+										{#each requestList.data.filter((request) => request.uuid !== selectedRequest.uuid) as request}
+											<option value={request.uuid}>
+												{request.method} {requestPath(request)} · {formatListTimestamp(request.created_at)}
+											</option>
+										{/each}
+									</select>
+									<Button type="button" size="sm" variant="outline" onclick={compareSelectedRequest} disabled={diffLoading}>
+										{diffLoading ? 'Comparing...' : 'Compare'}
+									</Button>
+								</div>
+
+								{#if diffError}
+									<p class="text-sm text-red-700">{diffError}</p>
+								{/if}
+
+								{#if diffResult}
+									<div class="space-y-3">
+										{#each diffResult.sections as section}
+											<div class="rounded-lg border border-[var(--border)] bg-[var(--accent-soft)] px-4 py-4">
+												<div class="flex items-center justify-between gap-3">
+													<p class="text-sm font-semibold">{section.label}</p>
+													<span class={`inline-flex rounded-full px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.05em] ${section.changed ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+														{section.changed ? 'changed' : 'same'}
+													</span>
+												</div>
+												<div class="mt-3 grid gap-3 xl:grid-cols-2">
+													<div>
+														<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">Current</p>
+														<pre class="mt-2 overflow-x-auto rounded-md bg-[var(--card)] px-4 py-4 font-mono text-sm leading-6 whitespace-pre-wrap break-words">{section.left || 'Empty'}</pre>
+													</div>
+													<div>
+														<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">Comparison</p>
+														<pre class="mt-2 overflow-x-auto rounded-md bg-[var(--card)] px-4 py-4 font-mono text-sm leading-6 whitespace-pre-wrap break-words">{section.right || 'Empty'}</pre>
+													</div>
+												</div>
+											</div>
+										{/each}
+									</div>
+								{/if}
+							</Card>
+						</div>
+					</Card>
+				{:else}
+					<Card class="space-y-4">
+						<Badge tone="muted">Advanced</Badge>
+						<h2 class="text-2xl font-semibold">No request selected</h2>
+						<p class="text-sm leading-7 text-[var(--muted-foreground)]">
+							Choose a request from the sidebar to replay it to another target or compare it
+							against a different captured request.
+						</p>
+					</Card>
+				{/if}
 			{:else if selectedRequest}
 				<Card class="space-y-5">
 					<div class="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
@@ -1301,111 +1436,6 @@
 						{#if selectedRequest.signature_validation.error}
 							<p class="mt-3 text-sm text-red-700">{selectedRequest.signature_validation.error}</p>
 						{/if}
-					</div>
-
-					<div class="grid gap-5 xl:grid-cols-2">
-						<Card class="space-y-4 border-[var(--border)] bg-[var(--card)] p-5 shadow-none">
-							<div class="flex items-start justify-between gap-3">
-								<div>
-									<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
-										Replay
-									</p>
-									<h3 class="mt-2 text-lg font-semibold">Re-send this request</h3>
-								</div>
-								<span class={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.05em] ${signatureTone(selectedRequest.signature_validation.status)}`}>
-									{signatureLabel(selectedRequest)}
-								</span>
-							</div>
-
-							<label class="space-y-2">
-								<span class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
-									Target URL
-								</span>
-								<input
-									class="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
-									type="url"
-									bind:value={replayURL}
-									placeholder="https://target.example.com/webhook"
-								/>
-							</label>
-
-							<div class="flex flex-wrap items-center gap-3">
-								<Button type="button" size="sm" onclick={replaySelectedRequest} disabled={replayState === 'loading'}>
-									{replayState === 'loading' ? 'Replaying...' : 'Replay request'}
-								</Button>
-								{#if replayState === 'success'}
-									<p class="text-sm text-[var(--accent-strong)]">Replay completed.</p>
-								{:else if replayState === 'error'}
-									<p class="text-sm text-red-700">{replayError}</p>
-								{/if}
-							</div>
-
-							{#if replayResult}
-								<div class="rounded-lg border border-[var(--border)] bg-[var(--accent-soft)] px-4 py-4">
-									<div class="flex flex-wrap items-center gap-3 text-sm">
-										<span class="font-semibold">Status {replayResult.status}</span>
-										<span>{replayResult.duration_ms}ms</span>
-									</div>
-									<p class="mt-3 break-all font-mono text-xs text-[var(--muted-foreground)]">{replayResult.url}</p>
-									<pre class="mt-3 overflow-x-auto rounded-md bg-[var(--card)] px-4 py-4 font-mono text-sm leading-6 whitespace-pre-wrap break-words">{replayResult.body || 'Empty response body'}</pre>
-								</div>
-							{/if}
-						</Card>
-
-						<Card class="space-y-4 border-[var(--border)] bg-[var(--card)] p-5 shadow-none">
-							<div>
-								<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
-									Compare
-								</p>
-								<h3 class="mt-2 text-lg font-semibold">Diff against another request</h3>
-							</div>
-
-							<div class="flex flex-col gap-3 sm:flex-row">
-								<select
-									class="flex-1 rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm outline-none transition focus:border-[var(--accent-strong)]"
-									bind:value={compareRequestId}
-								>
-									<option value="">Choose another request</option>
-									{#each requestList.data.filter((request) => request.uuid !== selectedRequest.uuid) as request}
-										<option value={request.uuid}>
-											{request.method} {requestPath(request)} · {formatListTimestamp(request.created_at)}
-										</option>
-									{/each}
-								</select>
-								<Button type="button" size="sm" variant="outline" onclick={compareSelectedRequest} disabled={diffLoading}>
-									{diffLoading ? 'Comparing...' : 'Compare'}
-								</Button>
-							</div>
-
-							{#if diffError}
-								<p class="text-sm text-red-700">{diffError}</p>
-							{/if}
-
-							{#if diffResult}
-								<div class="space-y-3">
-									{#each diffResult.sections as section}
-										<div class="rounded-lg border border-[var(--border)] bg-[var(--accent-soft)] px-4 py-4">
-											<div class="flex items-center justify-between gap-3">
-												<p class="text-sm font-semibold">{section.label}</p>
-												<span class={`inline-flex rounded-full px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.05em] ${section.changed ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
-													{section.changed ? 'changed' : 'same'}
-												</span>
-											</div>
-											<div class="mt-3 grid gap-3 xl:grid-cols-2">
-												<div>
-													<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">Current</p>
-													<pre class="mt-2 overflow-x-auto rounded-md bg-[var(--card)] px-4 py-4 font-mono text-sm leading-6 whitespace-pre-wrap break-words">{section.left || 'Empty'}</pre>
-												</div>
-												<div>
-													<p class="text-xs font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">Comparison</p>
-													<pre class="mt-2 overflow-x-auto rounded-md bg-[var(--card)] px-4 py-4 font-mono text-sm leading-6 whitespace-pre-wrap break-words">{section.right || 'Empty'}</pre>
-												</div>
-											</div>
-										</div>
-									{/each}
-								</div>
-							{/if}
-						</Card>
 					</div>
 
 					<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -1531,7 +1561,7 @@
 				</Card>
 			{:else}
 				<Card class="space-y-4">
-					<Badge tone="muted">Request detail</Badge>
+					<Badge tone="muted">Requests</Badge>
 					<h2 class="text-2xl font-semibold">No request selected</h2>
 					<p class="text-sm leading-7 text-[var(--muted-foreground)]">
 						Choose a request from the sidebar to inspect its headers, query parameters, form

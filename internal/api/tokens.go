@@ -63,6 +63,9 @@ type tokenResponse struct {
 	Timeout             int       `json:"timeout"`
 	CORS                bool      `json:"cors"`
 	RateLimit           int       `json:"rate_limit"`
+	CanDelete           bool      `json:"can_delete"`
+	AccessRole          string    `json:"access_role,omitempty"`
+	OwnerDisplay        string    `json:"owner_display,omitempty"`
 	CreatedAt           time.Time `json:"created_at"`
 	UpdatedAt           time.Time `json:"updated_at"`
 	ExpiresAt           time.Time `json:"expires_at"`
@@ -149,15 +152,43 @@ func (h *tokenHandler) listTokens(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	page, err := h.store.ListTokens(r.Context(), params)
+	if h.authMode == authModeNone {
+		page, listErr := h.store.ListTokens(r.Context(), params)
+		if listErr != nil {
+			writeError(w, http.StatusInternalServerError, "failed to list tokens")
+			return
+		}
+
+		data := make([]tokenResponse, 0, len(page.Tokens))
+		for _, token := range page.Tokens {
+			data = append(data, toListedTokenResponse(token, true, "", ""))
+		}
+
+		writeJSON(w, http.StatusOK, tokenListResponse{
+			Data:   data,
+			Total:  page.Total,
+			Limit:  page.Limit,
+			Offset: page.Offset,
+		})
+		return
+	}
+
+	user := auth.UserFromContext(r.Context())
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	page, err := h.store.ListTokensForUser(r.Context(), user.ID, params)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list tokens")
 		return
 	}
 
-	data := make([]tokenResponse, 0, len(page.Tokens))
-	for _, token := range page.Tokens {
-		data = append(data, toTokenResponse(token, nil))
+	data := make([]tokenResponse, 0, len(page.Items))
+	for _, item := range page.Items {
+		canDelete := item.Token.OwnerID != nil && *item.Token.OwnerID == user.ID
+		data = append(data, toListedTokenResponse(item.Token, canDelete, item.AccessRole, item.OwnerDisplay))
 	}
 
 	writeJSON(w, http.StatusOK, tokenListResponse{
@@ -472,6 +503,14 @@ func toTokenResponse(token *models.Token, receiveSecret *string) tokenResponse {
 		UpdatedAt:           token.UpdatedAt,
 		ExpiresAt:           token.ExpiresAt,
 	}
+}
+
+func toListedTokenResponse(token *models.Token, canDelete bool, accessRole, ownerDisplay string) tokenResponse {
+	resp := toTokenResponse(token, nil)
+	resp.CanDelete = canDelete
+	resp.AccessRole = accessRole
+	resp.OwnerDisplay = ownerDisplay
+	return resp
 }
 
 func validateTokenConfig(token *models.Token) error {

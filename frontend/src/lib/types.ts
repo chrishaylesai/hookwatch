@@ -15,9 +15,19 @@ export type TokenResponse = {
 	timeout: number;
 	cors: boolean;
 	rate_limit: number;
+	can_delete?: boolean;
+	access_role?: string;
+	owner_display?: string;
 	created_at: string;
 	updated_at: string;
 	expires_at: string;
+};
+
+export type TokenListResponse = {
+	data: TokenResponse[];
+	total: number;
+	limit: number;
+	offset: number;
 };
 
 export type RequestResponse = {

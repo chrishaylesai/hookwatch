@@ -171,7 +171,10 @@
 				{total} registered {total === 1 ? 'user' : 'users'}
 			</p>
 		</div>
-		<Button href="/" variant="secondary" size="sm">Back to home</Button>
+		<div class="flex gap-2">
+			<Button href="/admin/tokens" variant="ghost" size="sm">Manage tokens</Button>
+			<Button href="/" variant="secondary" size="sm">Back to home</Button>
+		</div>
 	</div>
 
 	{#if loadError}

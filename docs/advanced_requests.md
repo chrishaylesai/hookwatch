@@ -38,7 +38,7 @@ Behavior:
 - strips hop-by-hop transport headers such as `Host`, `Connection`, and `Content-Length`
 - returns the upstream status code, response headers, a truncated response body, and request duration
 
-The token detail page exposes replay from the selected request panel.
+The token detail page exposes replay from the `Advanced` tab for the selected request.
 
 ## Request Diffing
 
@@ -62,7 +62,7 @@ The diff response compares:
 - user agent
 - received timestamp
 
-JSON bodies and structured request fields are normalized before comparison when possible. The frontend renders the diff side by side from the token detail page.
+JSON bodies and structured request fields are normalized before comparison when possible. The frontend renders the diff from the token detail page's `Advanced` tab.
 
 ## OpenAPI Generation
 

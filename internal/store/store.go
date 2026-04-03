@@ -38,6 +38,21 @@ type TokenPage struct {
 	Offset int
 }
 
+// TokenListEntry describes a token row with list-specific metadata.
+type TokenListEntry struct {
+	Token        *models.Token
+	AccessRole   string
+	OwnerDisplay string
+}
+
+// TokenListPage is a paginated token list with metadata for list UIs.
+type TokenListPage struct {
+	Items  []TokenListEntry
+	Total  int
+	Limit  int
+	Offset int
+}
+
 // RequestListParams controls request pagination and ordering.
 type RequestListParams struct {
 	Limit  int
@@ -381,6 +396,118 @@ func (s *Store) ListTokens(ctx context.Context, params TokenListParams) (*TokenP
 
 	return &TokenPage{
 		Tokens: tokens,
+		Total:  total,
+		Limit:  params.Limit,
+		Offset: params.Offset,
+	}, nil
+}
+
+// ListTokensForUser retrieves active tokens owned by or shared with a user.
+func (s *Store) ListTokensForUser(ctx context.Context, userID string, params TokenListParams) (*TokenListPage, error) {
+	conn, err := s.take(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer s.pool.Put(conn)
+
+	params = normalizeTokenListParams(params)
+	activeAt := formatTime(time.Now().UTC())
+	total, err := queryCount(conn, `SELECT COUNT(*)
+		FROM tokens t
+		LEFT JOIN hook_grants g ON g.token_id = t.uuid AND g.user_id = ?
+		WHERE (t.persistent = 1 OR t.expires_at > ?)
+		  AND (t.owner_id = ? OR g.user_id IS NOT NULL)`, []any{userID, activeAt, userID})
+	if err != nil {
+		return nil, fmt.Errorf("count user tokens: %w", err)
+	}
+
+	query := fmt.Sprintf(`SELECT
+		t.uuid, t.owner_id, t.receive_mode, t.view_mode, t.persistent, t.receive_secret_hash, t.receive_secret_prefix,
+		t.signature_provider, t.signature_secret, t.default_status, t.default_content, t.default_content_type,
+		t.max_requests, t.timeout, t.cors, t.rate_limit, t.created_at, t.updated_at, t.expires_at,
+		CASE WHEN t.owner_id = ? THEN 'owner' ELSE g.role END AS access_role
+	FROM tokens t
+	LEFT JOIN hook_grants g ON g.token_id = t.uuid AND g.user_id = ?
+	WHERE (t.persistent = 1 OR t.expires_at > ?)
+	  AND (t.owner_id = ? OR g.user_id IS NOT NULL)
+	ORDER BY %s %s
+	LIMIT ? OFFSET ?`, tokenSortColumnWithAlias("t", params.SortBy), sortDirection(params.Order))
+
+	var items []TokenListEntry
+	err = sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
+		Args: []any{userID, userID, activeAt, userID, params.Limit, params.Offset},
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			token, scanErr := s.scanToken(stmt)
+			if scanErr != nil {
+				return scanErr
+			}
+			items = append(items, TokenListEntry{
+				Token:      token,
+				AccessRole: stmt.ColumnText(19),
+			})
+			return nil
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list user tokens: %w", err)
+	}
+
+	return &TokenListPage{
+		Items:  items,
+		Total:  total,
+		Limit:  params.Limit,
+		Offset: params.Offset,
+	}, nil
+}
+
+// ListTokensForAdmin retrieves all active tokens with owner metadata.
+func (s *Store) ListTokensForAdmin(ctx context.Context, params TokenListParams) (*TokenListPage, error) {
+	conn, err := s.take(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer s.pool.Put(conn)
+
+	params = normalizeTokenListParams(params)
+	activeAt := formatTime(time.Now().UTC())
+	total, err := queryCount(conn, "SELECT COUNT(*) FROM tokens WHERE persistent = 1 OR expires_at > ?", []any{activeAt})
+	if err != nil {
+		return nil, fmt.Errorf("count admin tokens: %w", err)
+	}
+
+	query := fmt.Sprintf(`SELECT
+		t.uuid, t.owner_id, t.receive_mode, t.view_mode, t.persistent, t.receive_secret_hash, t.receive_secret_prefix,
+		t.signature_provider, t.signature_secret, t.default_status, t.default_content, t.default_content_type,
+		t.max_requests, t.timeout, t.cors, t.rate_limit, t.created_at, t.updated_at, t.expires_at,
+		COALESCE(NULLIF(u.display_name, ''), u.email, 'Anonymous') AS owner_display
+	FROM tokens t
+	LEFT JOIN users u ON u.id = t.owner_id
+	WHERE t.persistent = 1 OR t.expires_at > ?
+	ORDER BY %s %s
+	LIMIT ? OFFSET ?`, tokenSortColumnWithAlias("t", params.SortBy), sortDirection(params.Order))
+
+	var items []TokenListEntry
+	err = sqlitex.ExecuteTransient(conn, query, &sqlitex.ExecOptions{
+		Args: []any{activeAt, params.Limit, params.Offset},
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			token, scanErr := s.scanToken(stmt)
+			if scanErr != nil {
+				return scanErr
+			}
+			items = append(items, TokenListEntry{
+				Token:        token,
+				AccessRole:   "admin",
+				OwnerDisplay: stmt.ColumnText(19),
+			})
+			return nil
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list admin tokens: %w", err)
+	}
+
+	return &TokenListPage{
+		Items:  items,
 		Total:  total,
 		Limit:  params.Limit,
 		Offset: params.Offset,
@@ -902,6 +1029,14 @@ func tokenSortColumn(sortBy string) string {
 	default:
 		return "created_at"
 	}
+}
+
+func tokenSortColumnWithAlias(alias, sortBy string) string {
+	column := tokenSortColumn(sortBy)
+	if alias == "" {
+		return column
+	}
+	return alias + "." + column
 }
 
 func requestSortColumn(sortBy string) string {

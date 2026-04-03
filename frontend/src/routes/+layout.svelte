@@ -85,8 +85,10 @@
 
 				<div class="flex items-center gap-3">
 					{#if auth.isAuthenticated}
+						<Button href="/tokens" variant="ghost" size="sm">Tokens</Button>
 						{#if auth.isAdmin}
-							<Button href="/admin" variant="ghost" size="sm">Admin</Button>
+							<Button href="/admin/tokens" variant="ghost" size="sm">Admin tokens</Button>
+							<Button href="/admin" variant="ghost" size="sm">Admin users</Button>
 						{/if}
 
 						<div class="relative">

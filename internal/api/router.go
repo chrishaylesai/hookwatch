@@ -97,6 +97,7 @@ func NewRouter(db *store.Store, eventHub *hub.Hub, authMode string, authService 
 		if authMode != "none" {
 			r.Route("/admin", func(r chi.Router) {
 				r.Use(auth.RequireAdmin)
+				r.Get("/tokens", adminH.listTokens)
 				r.Get("/users", adminH.listUsers)
 				r.Get("/users/{userId}", adminH.getUser)
 				r.Put("/users/{userId}", adminH.updateUser)

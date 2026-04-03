@@ -66,6 +66,283 @@ func TestCreateTokenAcceptsConfigurableResponseFields(t *testing.T) {
 	}
 }
 
+func TestListTokensInAnonymousModeReturnsActiveTokens(t *testing.T) {
+	t.Parallel()
+
+	db := newTestStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	router := NewRouter(db, hub.New(), authModeNone, nil, nil)
+
+	active := &models.Token{
+		UUID:               "active-token",
+		ReceiveMode:        receiveModePublic,
+		ViewMode:           viewModePublic,
+		DefaultStatus:      http.StatusOK,
+		DefaultContent:     "",
+		DefaultContentType: "text/plain",
+		MaxRequests:        10,
+		CreatedAt:          now.Add(-time.Minute),
+		UpdatedAt:          now.Add(-time.Minute),
+		ExpiresAt:          now.Add(24 * time.Hour),
+	}
+	if err := db.CreateToken(ctx, active); err != nil {
+		t.Fatalf("CreateToken(active): %v", err)
+	}
+
+	persistent := &models.Token{
+		UUID:               "persistent-token",
+		ReceiveMode:        receiveModePublic,
+		ViewMode:           viewModePublic,
+		Persistent:         true,
+		DefaultStatus:      http.StatusOK,
+		DefaultContent:     "",
+		DefaultContentType: "text/plain",
+		MaxRequests:        10,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}
+	if err := db.CreateToken(ctx, persistent); err != nil {
+		t.Fatalf("CreateToken(persistent): %v", err)
+	}
+
+	expired := &models.Token{
+		UUID:               "expired-token",
+		ReceiveMode:        receiveModePublic,
+		ViewMode:           viewModePublic,
+		DefaultStatus:      http.StatusOK,
+		DefaultContent:     "",
+		DefaultContentType: "text/plain",
+		MaxRequests:        10,
+		CreatedAt:          now.Add(-48 * time.Hour),
+		UpdatedAt:          now.Add(-48 * time.Hour),
+		ExpiresAt:          now.Add(-time.Minute),
+	}
+	if err := db.CreateToken(ctx, expired); err != nil {
+		t.Fatalf("CreateToken(expired): %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/tokens?limit=10", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp tokenListResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	if resp.Total != 2 {
+		t.Fatalf("total = %d, want 2", resp.Total)
+	}
+	if len(resp.Data) != 2 {
+		t.Fatalf("len(data) = %d, want 2", len(resp.Data))
+	}
+	if resp.Data[0].UUID != "persistent-token" || !resp.Data[0].CanDelete {
+		t.Fatalf("first token = %+v, want persistent-token with can_delete=true", resp.Data[0])
+	}
+	if resp.Data[1].UUID != "active-token" || !resp.Data[1].CanDelete {
+		t.Fatalf("second token = %+v, want active-token with can_delete=true", resp.Data[1])
+	}
+}
+
+func TestListTokensRequiresAuthenticationWhenEnabled(t *testing.T) {
+	t.Parallel()
+
+	db := newTestStore(t)
+	router := NewRouter(db, hub.New(), "local", &fakeAuthService{}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/tokens", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestListTokensForAuthenticatedUserReturnsOwnedAndGrantedTokens(t *testing.T) {
+	t.Parallel()
+
+	db := newTestStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	router := NewRouter(db, hub.New(), "local", &fakeAuthService{}, nil)
+
+	user := createAPIUser(t, db, "user-1", "user@example.com", "user")
+	owner := createAPIUser(t, db, "owner-1", "owner@example.com", "user")
+
+	owned := &models.Token{
+		UUID:               "owned-token",
+		OwnerID:            &user.ID,
+		ReceiveMode:        receiveModePublic,
+		ViewMode:           viewModePrivate,
+		DefaultStatus:      http.StatusOK,
+		DefaultContent:     "",
+		DefaultContentType: "text/plain",
+		MaxRequests:        10,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		ExpiresAt:          now.Add(24 * time.Hour),
+	}
+	if err := db.CreateToken(ctx, owned); err != nil {
+		t.Fatalf("CreateToken(owned): %v", err)
+	}
+
+	granted := &models.Token{
+		UUID:               "granted-token",
+		OwnerID:            &owner.ID,
+		ReceiveMode:        receiveModePublic,
+		ViewMode:           viewModePrivate,
+		DefaultStatus:      http.StatusOK,
+		DefaultContent:     "",
+		DefaultContentType: "text/plain",
+		MaxRequests:        10,
+		CreatedAt:          now.Add(time.Minute),
+		UpdatedAt:          now.Add(time.Minute),
+		ExpiresAt:          now.Add(25 * time.Hour),
+	}
+	if err := db.CreateToken(ctx, granted); err != nil {
+		t.Fatalf("CreateToken(granted): %v", err)
+	}
+
+	unrelated := &models.Token{
+		UUID:               "unrelated-token",
+		OwnerID:            &owner.ID,
+		ReceiveMode:        receiveModePublic,
+		ViewMode:           viewModePrivate,
+		DefaultStatus:      http.StatusOK,
+		DefaultContent:     "",
+		DefaultContentType: "text/plain",
+		MaxRequests:        10,
+		CreatedAt:          now.Add(2 * time.Minute),
+		UpdatedAt:          now.Add(2 * time.Minute),
+		ExpiresAt:          now.Add(26 * time.Hour),
+	}
+	if err := db.CreateToken(ctx, unrelated); err != nil {
+		t.Fatalf("CreateToken(unrelated): %v", err)
+	}
+
+	if err := db.CreateHookGrant(ctx, &models.HookGrant{
+		ID:        "grant-1",
+		TokenID:   granted.UUID,
+		UserID:    user.ID,
+		Role:      "viewer",
+		GrantedBy: owner.ID,
+		CreatedAt: now.Add(3 * time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateHookGrant: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/tokens?limit=10", nil)
+	req = requestWithUser(req, user)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp tokenListResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	if resp.Total != 2 {
+		t.Fatalf("total = %d, want 2", resp.Total)
+	}
+	if len(resp.Data) != 2 {
+		t.Fatalf("len(data) = %d, want 2", len(resp.Data))
+	}
+	if resp.Data[0].UUID != "granted-token" || resp.Data[0].AccessRole != "viewer" || resp.Data[0].CanDelete {
+		t.Fatalf("first token = %+v, want granted-token viewer can_delete=false", resp.Data[0])
+	}
+	if resp.Data[1].UUID != "owned-token" || resp.Data[1].AccessRole != "owner" || !resp.Data[1].CanDelete {
+		t.Fatalf("second token = %+v, want owned-token owner can_delete=true", resp.Data[1])
+	}
+}
+
+func TestAdminListTokensReturnsAllActiveTokens(t *testing.T) {
+	t.Parallel()
+
+	db := newTestStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	router := NewRouter(db, hub.New(), "local", &fakeAuthService{}, nil)
+
+	admin := createAPIUser(t, db, "admin-1", "admin@example.com", "admin")
+	owner := createAPIUser(t, db, "owner-1", "owner@example.com", "user")
+	user := createAPIUser(t, db, "user-1", "user@example.com", "user")
+
+	owned := &models.Token{
+		UUID:               "owned-token",
+		OwnerID:            &owner.ID,
+		ReceiveMode:        receiveModePublic,
+		ViewMode:           viewModePrivate,
+		DefaultStatus:      http.StatusOK,
+		DefaultContent:     "",
+		DefaultContentType: "text/plain",
+		MaxRequests:        10,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		ExpiresAt:          now.Add(24 * time.Hour),
+	}
+	if err := db.CreateToken(ctx, owned); err != nil {
+		t.Fatalf("CreateToken(owned): %v", err)
+	}
+
+	anonymous := &models.Token{
+		UUID:               "anonymous-token",
+		ReceiveMode:        receiveModePublic,
+		ViewMode:           viewModePublic,
+		DefaultStatus:      http.StatusOK,
+		DefaultContent:     "",
+		DefaultContentType: "text/plain",
+		MaxRequests:        10,
+		CreatedAt:          now.Add(time.Minute),
+		UpdatedAt:          now.Add(time.Minute),
+		ExpiresAt:          now.Add(25 * time.Hour),
+	}
+	if err := db.CreateToken(ctx, anonymous); err != nil {
+		t.Fatalf("CreateToken(anonymous): %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/tokens?limit=10", nil)
+	req = requestWithUser(req, admin)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp tokenListResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	if resp.Total != 2 {
+		t.Fatalf("total = %d, want 2", resp.Total)
+	}
+	if len(resp.Data) != 2 {
+		t.Fatalf("len(data) = %d, want 2", len(resp.Data))
+	}
+	if resp.Data[0].UUID != "anonymous-token" || resp.Data[0].OwnerDisplay != "Anonymous" || !resp.Data[0].CanDelete {
+		t.Fatalf("first token = %+v, want anonymous-token owner_display=Anonymous can_delete=true", resp.Data[0])
+	}
+	if resp.Data[1].UUID != "owned-token" || resp.Data[1].OwnerDisplay != owner.Email || !resp.Data[1].CanDelete {
+		t.Fatalf("second token = %+v, want owned-token owner_display=%s can_delete=true", resp.Data[1], owner.Email)
+	}
+
+	nonAdminReq := httptest.NewRequest(http.MethodGet, "/api/admin/tokens?limit=10", nil)
+	nonAdminReq = requestWithUser(nonAdminReq, user)
+	nonAdminRec := httptest.NewRecorder()
+	router.ServeHTTP(nonAdminRec, nonAdminReq)
+	if nonAdminRec.Code != http.StatusForbidden {
+		t.Fatalf("non-admin status = %d, want %d", nonAdminRec.Code, http.StatusForbidden)
+	}
+}
+
 func TestCreateTokenForcesPublicViewModeInAnonymousAuth(t *testing.T) {
 	t.Parallel()
 

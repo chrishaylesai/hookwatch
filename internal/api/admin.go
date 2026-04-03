@@ -21,13 +21,13 @@ func newAdminHandler(db *store.Store) *adminHandler {
 }
 
 type adminUserResponse struct {
-	ID          string  `json:"id"`
-	Email       string  `json:"email"`
-	DisplayName string  `json:"display_name"`
-	GlobalRole  string  `json:"global_role"`
+	ID           string  `json:"id"`
+	Email        string  `json:"email"`
+	DisplayName  string  `json:"display_name"`
+	GlobalRole   string  `json:"global_role"`
 	OIDCProvider *string `json:"oidc_provider,omitempty"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
 }
 
 type updateUserRequest struct {
@@ -66,6 +66,32 @@ func (h *adminHandler) listUsers(w http.ResponseWriter, r *http.Request) {
 		"total":  total,
 		"limit":  limit,
 		"offset": offset,
+	})
+}
+
+func (h *adminHandler) listTokens(w http.ResponseWriter, r *http.Request) {
+	params, err := parseTokenListParams(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	page, err := h.store.ListTokensForAdmin(r.Context(), params)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list tokens")
+		return
+	}
+
+	data := make([]tokenResponse, 0, len(page.Items))
+	for _, item := range page.Items {
+		data = append(data, toListedTokenResponse(item.Token, true, item.AccessRole, item.OwnerDisplay))
+	}
+
+	writeJSON(w, http.StatusOK, tokenListResponse{
+		Data:   data,
+		Total:  page.Total,
+		Limit:  page.Limit,
+		Offset: page.Offset,
 	})
 }
 
