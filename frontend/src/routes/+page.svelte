@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { getAuth } from '$lib/auth.svelte';
+	import { brandMark64 } from '$lib/branding';
 	import Button from '$lib/components/ui/button.svelte';
 	import type { TokenResponse } from '$lib/types';
 
@@ -94,9 +95,9 @@
 <div class="mx-auto flex min-h-[80vh] max-w-xl flex-col items-center justify-center px-4">
 	<div class="flex items-center gap-3">
 		<div
-			class="flex h-12 w-12 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--card)] text-sm font-semibold"
+			class="flex h-12 w-12 items-center justify-center overflow-hidden rounded-md border border-[var(--border)] bg-[var(--card)] p-1.5"
 		>
-			HW
+			<img src={brandMark64} alt="" class="h-full w-full object-contain" />
 		</div>
 		<h1 class="text-2xl font-bold tracking-tight">HookWatch</h1>
 	</div>

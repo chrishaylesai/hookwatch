@@ -1,5 +1,7 @@
 # HookWatch
 
+<img src="./frontend/static/branding/hookwatch_256x256.png" width="128" alt="HookWatch logo" />
+
 Local run instructions for the `hookwatch` app.
 
 Additional docs:

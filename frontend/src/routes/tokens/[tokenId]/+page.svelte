@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { requestToCurl } from '$lib/curl';
+	import { brandMark64 } from '$lib/branding';
 	import Badge from '$lib/components/ui/badge.svelte';
 	import Button from '$lib/components/ui/button.svelte';
 	import Card from '$lib/components/ui/card.svelte';
@@ -895,9 +896,9 @@
 	<header class="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
 		<div class="flex items-center gap-3">
 			<div
-				class="flex h-11 w-11 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--card)] text-sm font-semibold"
+				class="flex h-11 w-11 items-center justify-center overflow-hidden rounded-md border border-[var(--border)] bg-[var(--card)] p-1.5"
 			>
-				HW
+				<img src={brandMark64} alt="" class="h-full w-full object-contain" />
 			</div>
 			<div>
 				<p class="text-sm font-semibold uppercase tracking-[0.28em] text-[var(--muted-foreground)]">

@@ -1,8 +1,14 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import '../app.css';
-	import favicon from '$lib/assets/favicon.svg';
 	import { getAuth, loadAuth, logout } from '$lib/auth.svelte';
+	import {
+		brandFaviconIco,
+		brandFaviconPng,
+		brandMark64,
+		brandMark256,
+		brandSocialImage
+	} from '$lib/branding';
 	import Button from '$lib/components/ui/button.svelte';
 
 	let { children } = $props();
@@ -59,13 +65,17 @@
 </script>
 
 <svelte:head>
-	<link rel="icon" href={favicon} />
+	<link rel="icon" href={brandFaviconIco} sizes="48x48" />
+	<link rel="icon" type="image/png" href={brandFaviconPng} sizes="48x48" />
+	<link rel="apple-touch-icon" href={brandMark256} sizes="256x256" />
 	<title>HookWatch</title>
 	<meta
 		name="description"
 		content="A modern webhook inspector for capturing, replaying, and debugging HTTP traffic."
 	/>
 	<meta name="theme-color" content={themeMetaColor} />
+	<meta property="og:image" content={brandSocialImage} />
+	<meta name="twitter:image" content={brandSocialImage} />
 </svelte:head>
 
 <div class="min-h-screen">
@@ -74,9 +84,9 @@
 			<div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-10">
 				<a href="/" class="flex items-center gap-2.5">
 					<div
-						class="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--card)] text-xs font-semibold"
+						class="flex h-9 w-9 items-center justify-center overflow-hidden rounded-md border border-[var(--border)] bg-[var(--card)] p-1"
 					>
-						HW
+						<img src={brandMark64} alt="" class="h-full w-full object-contain" />
 					</div>
 					<span class="text-sm font-semibold uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
 						HookWatch

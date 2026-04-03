@@ -2,6 +2,7 @@
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { getAuth, setUser } from '$lib/auth.svelte';
+	import { brandMark64 } from '$lib/branding';
 	import Button from '$lib/components/ui/button.svelte';
 	import Card from '$lib/components/ui/card.svelte';
 	import type { AuthUser } from '$lib/types';
@@ -87,8 +88,8 @@
 
 <div class="mx-auto flex min-h-[calc(100vh-4rem)] max-w-md flex-col items-center justify-center px-4 py-12">
 	<div class="mb-8 text-center">
-		<div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--card)] text-base font-semibold">
-			HW
+		<div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center overflow-hidden rounded-md border border-[var(--border)] bg-[var(--card)] p-2">
+			<img src={brandMark64} alt="" class="h-full w-full object-contain" />
 		</div>
 		<h1 class="text-3xl font-bold tracking-tight">Sign in</h1>
 		<p class="mt-2 text-sm text-[var(--muted-foreground)]">
